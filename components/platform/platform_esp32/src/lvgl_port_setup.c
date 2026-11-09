@@ -36,6 +36,16 @@ void platform_lvgl_mem_stats(uint32_t *used, uint32_t *free_sz, uint32_t *max_bl
 // 注意宏名:LVGL 9 用 LV_USE_STDLIB_MALLOC==LV_STDLIB_BUILTIN 选择分配器,
 // 没有 LV_USE_BUILTIN_MALLOC 这个宏(写错会静默走 #else 恒返回 0)。
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
+    // Safety: lv_is_initialized() checks if LVGL has been initialized to prevent
+    // divide-by-zero crash in lv_mem_monitor_core when called before platform_lvgl_init.
+    // StopWatch initialization calls log_heap("00-boot") before display init, triggering
+    // this path. Return zeros safely when LVGL pool not yet created (fixes boot crash).
+    if (!lv_is_initialized()) {
+        if (used)    *used    = 0;
+        if (free_sz) *free_sz = 0;
+        if (max_blk) *max_blk = 0;
+        return;
+    }
     lv_mem_monitor_t m;
     lv_mem_monitor(&m);
     // 报 max_used(历史峰值)而非 total-free(采样瞬时值):LVGL 绘制期间会临时分配
