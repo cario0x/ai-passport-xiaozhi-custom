@@ -2,6 +2,7 @@
 // Round display safe-area layout helpers for M5Stack StopWatch
 #pragma once
 
+#include "lvgl.h"
 #include "platform/board_config.h"
 
 #ifdef __cplusplus
