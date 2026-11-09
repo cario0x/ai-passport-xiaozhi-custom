@@ -1855,8 +1855,19 @@ static void idle_check_cb(void *arg) {
             note_activity();
             return;
         }
-        esp_err_t err = esp_deep_sleep_enable_gpio_wakeup(
+        
+        // 配置GPIO唤醒:根据芯片特性选择合适的API
+        esp_err_t err;
+#if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
+        // ESP32-C3 等支持直接GPIO深睡唤醒的芯片
+        err = esp_deep_sleep_enable_gpio_wakeup(
             1ULL << s_button_wakeup_gpio, ESP_GPIO_WAKEUP_GPIO_LOW);
+#elif SOC_PM_SUPPORT_EXT0_WAKEUP
+        // ESP32-S3 等使用EXT0唤醒的芯片 (单GPIO,低电平唤醒)
+        err = esp_sleep_enable_ext0_wakeup((gpio_num_t)s_button_wakeup_gpio, 0);
+#else
+#error "No deep sleep GPIO wakeup method available for this chip"
+#endif
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "配置 GPIO%d 深睡唤醒失败:%s",
                      s_button_wakeup_gpio, esp_err_to_name(err));

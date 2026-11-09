@@ -7,6 +7,8 @@
 #if BOARD_AI_PASSPORT
 #  include "button_adc.h"
 #  include "esp_adc/adc_oneshot.h"
+#elif BOARD_M5STACK_STOPWATCH
+#  include "button_gpio.h"
 #endif
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -104,7 +106,7 @@ hal_button_t *platform_create_button(const board_config_t *cfg) {
             .gpio_num = cfg->btn_gpio[i],
             .active_level = cfg->btn_active_level,
         };
-        esp_err_t e = iot_button_create(&bc, &gc, &c->h[i]);
+        esp_err_t e = iot_button_new_gpio_device(&bc, &gc, &c->h[i]);
         if (e != ESP_OK || !c->h[i]) {
             c->h[i] = NULL;
             ESP_LOGE(TAG, "GPIO 按键[%d] 创建失败: %s (gpio=%d)",
