@@ -1,17 +1,22 @@
-# StopWatch 16MB Flash 分区表
-# 基于 AI PASSPORT 8MB 分区表扩展,保留核心布局兼容性
+# StopWatch Compatible Partition Table
+# Preserves upstream 78/xiaozhi-esp32 v2.5.2 NVS location for cross-firmware compatibility
 # Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     ,        0x6000,
-phy_init, data, phy,     ,        0x1000,
-factory,  app,  factory, ,        0x400000,
-imgstore, data, spiffs,  ,        0x20000,
-imgframe, data, spiffs,  ,        0x40000,
-cardid,   data, nvs,     ,        0x4000,
-imguser,  data, spiffs,  ,        0x40000,
-audio,    data, spiffs,  0x47a000,0x100000,
-imgava,   data, spiffs,  ,        0x40000,
-assets,   data, spiffs,  0x5fa000,0x186000,
-petart,   data, 0x40,    0x780000,0x150000, readonly
-theme_cache,data,0x42,   0x8d0000,0x30000,
-companion,data, 0x41,    0x900000,0x300000, readonly
-# 16MB 总容量 0x1000000, 当前使用至 0xC00000 (12MB), 预留 4MB 扩展空间
+
+# Core system partitions (aligned with upstream for NVS preservation)
+nvs,      data, nvs,     0x9000,    0x4000,   # 16KB at standard location (upstream compatible)
+phy_init, data, phy,     0xd000,    0x1000,   # 4KB (moved from 0xf000, save 8KB)
+cardid,   data, nvs,     0xe000,    0x4000,   # 16KB identity storage
+
+# Application partition (factory, not OTA to match ai-passport-xiaozhi-custom)
+factory,  app,  factory, 0x20000,   0x400000, # 4MB application (aligned with upstream OTA boundary)
+
+# Resource partitions
+imgstore, data, spiffs,  0x420000,  0x20000,  # 128KB
+imgframe, data, spiffs,  0x440000,  0x40000,  # 256KB
+imguser,  data, spiffs,  0x480000,  0x40000,  # 256KB
+audio,    data, spiffs,  0x4c0000,  0x100000, # 1MB
+imgava,   data, spiffs,  0x5c0000,  0x40000,  # 256KB
+assets,   data, spiffs,  0x600000,  0x180000, # 1.5MB
+petart,   data, 0x40,    0x780000,  0x150000, readonly  # 1.3MB PetArt
+theme_cache,data,0x42,   0x8d0000,  0x30000,  # 192KB
+companion,data, 0x41,    0x900000,  0x300000, readonly  # 3MB Companion resources (aligned with upstream assets boundary)

@@ -27,5 +27,5 @@ idf_component_register(
     EMBED_FILES "${PROJECT_DIR}/assets/fonts/languages.bin"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "${companion_dir}"
-    REQUIRES services lvgl xiaozhi
+    REQUIRES services lvgl xiaozhi platform_esp32
     PRIV_REQUIRES esp_rom esp_partition)

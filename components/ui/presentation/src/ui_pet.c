@@ -4,6 +4,7 @@
 // 进入时播放揭晓:倒计时 3-2-1 → 幕布左右拉开 → 宠物弹出(回弹)+ 名字淡入。
 // 长按确定键退出(app 层在宠物页激活时把长按转成 ui_pet_close)。
 #include "presentation/ui_pet.h"
+#include "presentation/ui_round_layout.h"
 #include "lvgl.h"
 
 LV_FONT_DECLARE(lv_font_cn_16);
@@ -102,7 +103,7 @@ void ui_pet_open(uint8_t type, bool reveal, ui_pet_exit_cb_t on_exit, void *user
     lv_label_set_text(title, "我的宠物");
     lv_obj_set_style_text_font(title, &lv_font_cn_24, 0);
     lv_obj_set_style_text_color(title, WHITE, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+    ui_round_align_top(title, 16);  // Safe-area aware top alignment
 
     // 吉祥物(初始缩到 0,揭晓时弹出)
     S.stage = lv_obj_create(S.scr);
@@ -134,7 +135,7 @@ void ui_pet_open(uint8_t type, bool reveal, ui_pet_exit_cb_t on_exit, void *user
     lv_label_set_text(S.hint, "长按确定键退出");
     lv_obj_set_style_text_font(S.hint, &lv_font_cn_16, 0);
     lv_obj_set_style_text_color(S.hint, GRAY, 0);
-    lv_obj_align(S.hint, LV_ALIGN_BOTTOM_MID, 0, -14);
+    ui_round_align_bottom(S.hint, 14);  // Safe-area aware bottom alignment
 
     if (!reveal) {                 // 非揭晓:直接显示静态宠物,不建幕布/倒计时
         lv_screen_load(S.scr);
