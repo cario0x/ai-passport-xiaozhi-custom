@@ -1,6 +1,6 @@
 # components/platform_esp32/CMakeLists.txt
 idf_component_register(
-    SRCS "src/disp_st7789.c" "src/lvgl_port_setup.c" "src/screen_capture_lvgl.c"
+    SRCS "src/disp_driver.c" "src/lvgl_port_setup.c" "src/screen_capture_lvgl.c"
          "src/btn_iot_button.c"
          "src/audio_es8311.c" "src/platform_sys.c" "src/ble_config.c"
          "src/ble_scan.c" "src/kv_nvs.c" "src/jpeg_store.c" "src/jpeg_view.c"

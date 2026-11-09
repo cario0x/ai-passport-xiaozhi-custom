@@ -1,16 +1,23 @@
 // components/platform_esp32/src/btn_iot_button.c
+// 统一按钮驱动:支持 ADC 按键 (AI PASSPORT) 和 GPIO 按键 (StopWatch)
 #include "platform/board_config.h"
 #if PERIPH_BUTTON
 #include "hal/hal_button.h"
 #include "iot_button.h"
-#include "button_adc.h"
-#include "esp_adc/adc_oneshot.h"
+#if BOARD_AI_PASSPORT
+#  include "button_adc.h"
+#  include "esp_adc/adc_oneshot.h"
+#endif
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include <stdlib.h>
 
+#if BOARD_AI_PASSPORT
 static const char *TAG = "btn_adc";
+#elif BOARD_M5STACK_STOPWATCH
+static const char *TAG = "btn_gpio";
+#endif
 
 typedef struct btn_ctx_s btn_ctx_t;
 // 每个按钮一个转发槽,携带索引,使一套回调能区分 4 个按钮。
@@ -49,6 +56,7 @@ static int btn_count(hal_button_t *self) { (void)self; return BTN_COUNT; }
 
 static const hal_button_api_t API = { .on_event = btn_on_event, .count = btn_count };
 
+#if BOARD_AI_PASSPORT
 // ADC 按键电压窗口(mV)。电路:3.3V — 外部上拉 10k — ADC节点(GPIO0) — 分压电阻 — GND
 //   index0 上  :   0Ω  → 3.3×0/10k      =   0mV
 //   index1 下  :   1k   → 3.3×1k/11k     ≈ 300mV
@@ -63,21 +71,23 @@ static const uint16_t BTN_MV[BTN_COUNT][2] = {
     {  150,  447 },   // 下   (300mV)
     {  447, 1900 },   // 确定 (595mV,上界留宽以隔开松开态的 3300mV)
 };
+#endif // BOARD_AI_PASSPORT
 
 hal_button_t *platform_create_button(const board_config_t *cfg) {
     btn_ctx_t *c = calloc(1, sizeof(*c));
     c->wake_gpio = cfg->btn_wakeup_gpio;
+    
     for (int i = 0; i < BTN_COUNT; i++) {
         c->slot[i].parent = c;
         c->slot[i].index = i;
         const button_config_t bc = { 0 };
+        
+#if BOARD_AI_PASSPORT
+        // AI PASSPORT: ADC 按键
         const button_adc_config_t ac = {
-            // adc_handle 必须为 NULL:该字段语义是"复用调用方已建好的 unit",
-            // 组件会直接解引用它。传 NULL 才会走内部 adc_oneshot_new_unit 自建,
-            // 并在同一 unit 上为多个按键复用(每键一个 button_index + 电压窗口)。
             .adc_handle   = NULL,
             .unit_id      = ADC_UNIT_1,
-            .adc_channel  = (uint8_t)cfg->btn_adc_channel,   // GPIO0 = ADC1_CH0
+            .adc_channel  = (uint8_t)cfg->btn_adc_channel,
             .button_index = i,
             .min          = BTN_MV[i][0],
             .max          = BTN_MV[i][1],
@@ -88,7 +98,24 @@ hal_button_t *platform_create_button(const board_config_t *cfg) {
             ESP_LOGE(TAG, "ADC 按键[%d] 创建失败: %s (ch=%d %d~%dmV)",
                      i, esp_err_to_name(e), cfg->btn_adc_channel, BTN_MV[i][0], BTN_MV[i][1]);
         }
+#elif BOARD_M5STACK_STOPWATCH
+        // StopWatch: GPIO 按键
+        const button_gpio_config_t gc = {
+            .gpio_num = cfg->btn_gpio[i],
+            .active_level = cfg->btn_active_level,
+        };
+        esp_err_t e = iot_button_create(&bc, &gc, &c->h[i]);
+        if (e != ESP_OK || !c->h[i]) {
+            c->h[i] = NULL;
+            ESP_LOGE(TAG, "GPIO 按键[%d] 创建失败: %s (gpio=%d)",
+                     i, esp_err_to_name(e), cfg->btn_gpio[i]);
+        } else {
+            ESP_LOGI(TAG, "GPIO 按键[%d] 已创建 (gpio=%d active_level=%d)",
+                     i, cfg->btn_gpio[i], cfg->btn_active_level);
+        }
+#endif
     }
+    
     hal_button_t *b = calloc(1, sizeof(*b));
     b->api = &API; b->impl = c;
     return b;
@@ -114,7 +141,7 @@ bool platform_button_prepare_deep_sleep(hal_button_t *b) {
     btn_ctx_t *c = (btn_ctx_t *)b->impl;
     if (c->wake_gpio < 0) return false;
 
-    // 停止 ADC 按键定时采样，避免 GPIO 深睡接管时与 ADC 驱动切换复用状态产生毛刺。
+    // 停止按键定时采样
     esp_err_t err = iot_button_stop();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "停止按键采样失败: %s", esp_err_to_name(err));
@@ -124,8 +151,13 @@ bool platform_button_prepare_deep_sleep(hal_button_t *b) {
     const gpio_config_t io = {
         .pin_bit_mask = 1ULL << c->wake_gpio,
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+#if BOARD_AI_PASSPORT
+        .pull_up_en = GPIO_PULLUP_ENABLE,   // ADC 按键需要上拉
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
+#elif BOARD_M5STACK_STOPWATCH
+        .pull_up_en = GPIO_PULLUP_ENABLE,   // GPIO 按键也需要上拉
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+#endif
         .intr_type = GPIO_INTR_DISABLE,
     };
     err = gpio_config(&io);
@@ -135,11 +167,19 @@ bool platform_button_prepare_deep_sleep(hal_button_t *b) {
         return false;
     }
 
-    // 等复用和上拉稳定后连续确认高电平；低电平表示按键仍按住或线路异常，不能入睡。
+    // 等复用和上拉稳定后连续确认高电平
+#if BOARD_AI_PASSPORT
     esp_rom_delay_us(1000);
     bool released = gpio_get_level(c->wake_gpio) != 0;
     esp_rom_delay_us(1000);
     released = released && gpio_get_level(c->wake_gpio) != 0;
+#elif BOARD_M5STACK_STOPWATCH
+    // StopWatch GPIO 按键低电平有效,检查是否松开 (高电平)
+    esp_rom_delay_us(1000);
+    bool released = gpio_get_level(c->wake_gpio) != 0;
+    esp_rom_delay_us(1000);
+    released = released && gpio_get_level(c->wake_gpio) != 0;
+#endif
     if (!released) {
         ESP_LOGW(TAG, "GPIO%d 入睡前仍为低电平,取消本次深睡", c->wake_gpio);
         iot_button_resume();
@@ -152,10 +192,12 @@ void platform_button_cancel_deep_sleep(hal_button_t *b) {
     if (b && b->impl) (void)iot_button_resume();
 }
 
-// 开机瞬间读一次 ADC,判当前被按住的按键索引(0上/1下/2确定),无/松开返回 -1。
-// 必须在 platform_create_button **之前**调用:iot_button 会占用 ADC_UNIT_1,这里用完即删。
+// 开机瞬间读取按键状态,判当前被按住的按键索引,无/松开返回 -1。
+// 必须在 platform_create_button **之前**调用。
 // 用途:产线自检的"上电按住确定键"触发(不碰电脑,直接在设备完成)。
 int platform_button_boot_index(const board_config_t *cfg) {
+#if BOARD_AI_PASSPORT
+    // AI PASSPORT: ADC 按键
     adc_oneshot_unit_handle_t u = NULL;
     adc_oneshot_unit_init_cfg_t ic = { .unit_id = ADC_UNIT_1 };
     if (adc_oneshot_new_unit(&ic, &u) != ESP_OK || !u) return -1;
@@ -169,12 +211,37 @@ int platform_button_boot_index(const board_config_t *cfg) {
             if (adc_oneshot_read(u, ch, &raw) == ESP_OK) { acc += raw; ok++; }
         }
         if (ok) {
-            int mv = (int)(acc / ok) * 3300 / 4095;   // 12bit/12dB 近似,足够判档
+            int mv = (int)(acc / ok) * 3300 / 4095;
             for (int i = 0; i < BTN_COUNT; i++)
                 if (mv >= BTN_MV[i][0] && mv < BTN_MV[i][1]) { idx = i; break; }
         }
     }
     adc_oneshot_del_unit(u);
     return idx;
+#elif BOARD_M5STACK_STOPWATCH
+    // StopWatch: GPIO 按键,简单检测哪个被按下 (低电平)
+    for (int i = 0; i < BTN_COUNT; i++) {
+        int gpio_num = cfg->btn_gpio[i];
+        if (!GPIO_IS_VALID_GPIO(gpio_num)) continue;
+        
+        gpio_config_t io = {
+            .pin_bit_mask = 1ULL << gpio_num,
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        if (gpio_config(&io) != ESP_OK) continue;
+        
+        esp_rom_delay_us(100);
+        int level = gpio_get_level(gpio_num);
+        if (level == cfg->btn_active_level) {
+            return i;  // 找到被按下的按键
+        }
+    }
+    return -1;  // 无按键按下
+#else
+    return -1;
+#endif
 }
 #endif // PERIPH_BUTTON
