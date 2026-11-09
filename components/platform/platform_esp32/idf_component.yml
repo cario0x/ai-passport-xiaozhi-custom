@@ -1,7 +1,19 @@
 # components/platform_esp32/idf_component.yml
 dependencies:
   idf: ">=5.5.0"
-  # ST7789P3(T200H7-C14-05)使用 ESP-IDF 内置 esp_lcd 驱动,无需额外组件
+  # 显示驱动
+  # AI PASSPORT: ST7789P3 使用 ESP-IDF 内置 esp_lcd 驱动
+  # StopWatch: CO5300 AMOLED QSPI 驱动
+  espressif/esp_lcd_co5300: "^2.1.0"
+  
+  # 触摸驱动 (StopWatch CST820B)
+  espressif/esp_lcd_touch_cst816s: "^1.1.2"
+  
+  # GPIO 扩展器和电源管理 (StopWatch M5IOE1 + M5PM1)
+  m5stack/m5ioe1: "^1.0.9"
+  m5stack/m5pm1: "^1.0.7"
+  
+  # UI 和外设
   lvgl/lvgl: "9.5.0"
   espressif/esp_lvgl_port: "*"      # 见架构文档版本提醒
   espressif/button: "*"             # iot_button

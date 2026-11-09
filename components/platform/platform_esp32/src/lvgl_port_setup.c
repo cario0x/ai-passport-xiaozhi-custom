@@ -9,6 +9,13 @@
 #include "esp_log.h"
 #include <stdbool.h>
 
+#if BOARD_M5STACK_STOPWATCH
+#include "esp_lcd_touch.h"
+#include "esp_lcd_touch_cst816s.h"
+#include "driver/i2c_master.h"
+#include "platform/stopwatch_hardware.h"
+#endif
+
 static bool s_nav_enabled = true;
 
 typedef struct {
@@ -29,6 +36,16 @@ void platform_lvgl_mem_stats(uint32_t *used, uint32_t *free_sz, uint32_t *max_bl
 // 注意宏名:LVGL 9 用 LV_USE_STDLIB_MALLOC==LV_STDLIB_BUILTIN 选择分配器,
 // 没有 LV_USE_BUILTIN_MALLOC 这个宏(写错会静默走 #else 恒返回 0)。
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
+    // Safety: lv_is_initialized() checks if LVGL has been initialized to prevent
+    // divide-by-zero crash in lv_mem_monitor_core when called before platform_lvgl_init.
+    // StopWatch initialization calls log_heap("00-boot") before display init, triggering
+    // this path. Return zeros safely when LVGL pool not yet created (fixes boot crash).
+    if (!lv_is_initialized()) {
+        if (used)    *used    = 0;
+        if (free_sz) *free_sz = 0;
+        if (max_blk) *max_blk = 0;
+        return;
+    }
     lv_mem_monitor_t m;
     lv_mem_monitor(&m);
     // 报 max_used(历史峰值)而非 total-free(采样瞬时值):LVGL 绘制期间会临时分配
@@ -55,6 +72,21 @@ static void round_active_screen(lv_event_t *e) {
     lv_obj_set_style_clip_corner(scr, true, 0);
 #endif
 }
+
+#if BOARD_M5STACK_STOPWATCH
+// Round display coordinate rounder: align drawing areas to 2-pixel boundaries
+// to prevent QSPI partial update artifacts on CO5300 AMOLED
+static void platform_round_display_rounder(lv_event_t *e) {
+    lv_area_t *area = (lv_area_t *)lv_event_get_param(e);
+    if (!area) return;
+    
+    // Align to 2-pixel grid (from upstream m5stack_stopwatch.cc)
+    area->x1 = (area->x1 >> 1) << 1;
+    area->y1 = (area->y1 >> 1) << 1;
+    area->x2 = ((area->x2 >> 1) << 1) + 1;
+    area->y2 = ((area->y2 >> 1) << 1) + 1;
+}
+#endif
 
 lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg) {
     lvgl_port_cfg_t pc = ESP_LVGL_PORT_INIT_CONFIG();
@@ -95,8 +127,66 @@ lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg)
         lv_display_add_event_cb(d, round_active_screen, LV_EVENT_SCREEN_LOADED, NULL);
         round_active_screen(NULL);
 #endif
+#if BOARD_M5STACK_STOPWATCH
+        // Round display coordinate rounder: align drawing areas to 2-pixel boundaries
+        // to avoid QSPI partial updates causing AMOLED flicker
+        lv_display_add_event_cb(d, platform_round_display_rounder, LV_EVENT_INVALIDATE_AREA, NULL);
+#endif
         lvgl_port_unlock();
     }
+
+#if BOARD_M5STACK_STOPWATCH
+    // Initialize CST820B touch input for StopWatch
+    // Touch controller shares I2C bus, reset via M5IOE1 PYG4, INT on GPIO13
+    extern i2c_master_bus_handle_t g_stopwatch_i2c_bus;  // From app.c
+    if (g_stopwatch_i2c_bus && d) {
+        ESP_LOGI("lvgl_touch", "Initializing CST820B touch controller");
+        
+        // Create I2C panel IO for touch
+        esp_lcd_panel_io_handle_t touch_io = NULL;
+        esp_lcd_panel_io_i2c_config_t io_config = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
+        esp_err_t err = esp_lcd_new_panel_io_i2c(g_stopwatch_i2c_bus, &io_config, &touch_io);
+        if (err != ESP_OK) {
+            ESP_LOGE("lvgl_touch", "Failed to create touch I2C IO: %s", esp_err_to_name(err));
+        } else {
+            // Configure touch controller
+            esp_lcd_touch_config_t touch_cfg = {
+                .x_max = cfg->lcd_w,
+                .y_max = cfg->lcd_h,
+                .rst_gpio_num = GPIO_NUM_NC,  // Reset via M5IOE1, not direct GPIO
+                .int_gpio_num = 13,           // GPIO13 interrupt
+                .levels = {
+                    .reset = 0,
+                    .interrupt = 0,
+                },
+                .flags = {
+                    .swap_xy = 0,
+                    .mirror_x = 0,
+                    .mirror_y = 0,
+                },
+            };
+            
+            esp_lcd_touch_handle_t touch_handle = NULL;
+            err = esp_lcd_touch_new_i2c_cst816s(touch_io, &touch_cfg, &touch_handle);
+            if (err != ESP_OK) {
+                ESP_LOGE("lvgl_touch", "Failed to create CST820B touch: %s", esp_err_to_name(err));
+            } else {
+                // Register touch with LVGL
+                const lvgl_port_touch_cfg_t lvgl_touch_cfg = {
+                    .disp = d,
+                    .handle = touch_handle,
+                };
+                lv_indev_t *touch_indev = lvgl_port_add_touch(&lvgl_touch_cfg);
+                if (touch_indev) {
+                    ESP_LOGI("lvgl_touch", "CST820B touch registered with LVGL");
+                } else {
+                    ESP_LOGE("lvgl_touch", "Failed to register touch with LVGL");
+                }
+            }
+        }
+    }
+#endif
+
     return d;
 }
 

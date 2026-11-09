@@ -2,6 +2,7 @@
 #include "presentation/companion_resources.h"
 #include "presentation/ui_theme.h"
 #include "presentation/ui_xiaozhi_theme.h"
+#include "presentation/ui_round_layout.h"
 #include "src/draw/lv_image_decoder_private.h"
 #include "xz_theme.h"
 #include "xz_theme_font.h"
@@ -150,7 +151,7 @@ lv_obj_t *ui_official_stage(lv_obj_t *root, int y) {
     lv_obj_set_pos(wallpaper, -12, -y);
   }
   lv_obj_t *image = lv_image_create(root);
-  lv_obj_align(image, LV_ALIGN_TOP_MID, 0, y + (144 - XZ_ICON_EDGE) / 2);
+  ui_round_align_top(image, y + (144 - XZ_ICON_EDGE) / 2);  // Safe-area aware avatar position
   face_image = (lv_image_dsc_t){.header = {.magic = LV_IMAGE_HEADER_MAGIC,
                                            .cf = LV_COLOR_FORMAT_RGB565A8,
                                            .w = XZ_ICON_EDGE,

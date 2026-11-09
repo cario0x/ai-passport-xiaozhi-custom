@@ -2,6 +2,7 @@
 // 首页:状态栏 + 头像 + 昵称/头衔/四行简介 + dock。
 #include "presentation/ui_profile.h"
 #include "presentation/ui_licenses.h"
+#include "presentation/ui_round_layout.h"
 #include "lvgl.h"
 #include "presentation/ui_theme.h"
 #include "presentation/bobo_art.h"
@@ -299,7 +300,7 @@ void ui_profile_create(void) {
     lv_obj_t *dock = lv_obj_create(scr);
     lv_obj_remove_style_all(dock);
     lv_obj_set_size(dock, SCREEN_W, DOCK_H);
-    lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
+    ui_round_align_bottom(dock, 0);  // Safe-area aware bottom dock
     lv_obj_set_style_bg_color(dock, COL_PANEL, 0);
     lv_obj_set_style_bg_opa(dock, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(dock, COL_BORDER, 0);

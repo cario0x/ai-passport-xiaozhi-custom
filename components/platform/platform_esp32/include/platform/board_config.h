@@ -1,6 +1,7 @@
 // components/platform_esp32/include/platform/board_config.h
 #pragma once
 #include <stdint.h>
+#include "sdkconfig.h"
 #if defined(__has_include)
 #  if __has_include("driver/spi_master.h")
 #    include "driver/spi_master.h"
@@ -10,6 +11,18 @@ typedef int spi_host_device_t;
 #  endif
 #else
 #  include "driver/spi_master.h"
+#endif
+
+// ===== 板卡自动检测 =====
+// 根据 CONFIG_IDF_TARGET 自动选择板卡配置
+#if CONFIG_IDF_TARGET_ESP32S3
+#  define BOARD_M5STACK_STOPWATCH 1
+#  define BOARD_AI_PASSPORT       0
+#elif CONFIG_IDF_TARGET_ESP32C3
+#  define BOARD_M5STACK_STOPWATCH 0
+#  define BOARD_AI_PASSPORT       1
+#else
+#  error "Unsupported target chip. Only ESP32-C3 and ESP32-S3 are supported."
 #endif
 
 // ===== 外设编译开关(1=包含该外设 / 0=不包含)=====
@@ -32,18 +45,31 @@ typedef int spi_host_device_t;
 // ⚠ 内存代价(真机实测对照,半径 30 vs 0):整屏 clip_corner 需把子树先渲染到 layer buffer
 //   再套遮罩 —— LVGL 池峰值 建界面时 +17KB、稳态 +9KB(35.4KB vs 26.9KB)。
 //   故改动此项后必须重看日志的 lv_peak,并相应调 CONFIG_LV_MEM_SIZE_KILOBYTES
-//   (见 sdkconfig.defaults)。当前 48KB 池就是按"半径 30 / 峰值 35.4KB"定的,余量约 24%。
+//   (见 sdkconfig.defaults)。
+#if BOARD_M5STACK_STOPWATCH
+// StopWatch: 圆形屏幕,使用完整圆形遮罩而非简单圆角
+#define SCREEN_CORNER_RADIUS  0  // 圆形屏幕不使用圆角,通过 LVGL 圆形遮罩实现
+#define SCREEN_IS_ROUND       1
+#define DISPLAY_ROUND_EDGE_INSET  56  // 顶部/底部弧形安全区
+#define DISPLAY_STATUS_BAR_TOP_OFF  56  // 状态文字:上半部分,图标下方
+#define DISPLAY_CHAT_BAR_BOTTOM_OFF  66  // 字幕:从底部弧形抬升
+#else
+// AI PASSPORT: 方屏带圆角
 #define SCREEN_CORNER_RADIUS  30
+#define SCREEN_IS_ROUND       0
+#endif
 
-// ===== 电池电量检测:CW2017 电量计(3.7V 锂电,4.2V 满)=====
-// I2C 从地址 0x63,**与 ES8311 共用 I2C_NUM_0 总线**(SDA=i2c_sda / SCL=i2c_scl,见下方 BOARD_CONFIG)。
-// 电量计自带 FastCali,直接给 SOC%,无需分压电阻。芯片自带 Li-Poly profile 开箱即用。
-#define BATT_SAMPLE_MS    500     // 采样周期(ms);直接采用 CW2017 SOC,不叠加软件平滑或迟滞
-#define BATT_BOOT_RETRY_MS  50     // 开机快速首读间隔;首个有效 SOC 写入界面后停止
-#define BATT_BOOT_TIMEOUT_MS  500  // 首读短时重试窗口;超时后交给常规定时采样
-// 电池 profile(80 字节写入 CW2017)。profile 表见 src/cw2017_profiles.h,换电池只改下面两行:
+// ===== 电池电量检测 =====
+// AI PASSPORT: CW2017 电量计 @0x63 (I2C)
+// StopWatch: M5PM1 PMIC @0x6E (I2C) 提供电压读数,软件估算电量
+#define BATT_SAMPLE_MS    500     // 采样周期(ms)
+#define BATT_BOOT_RETRY_MS  50     // 开机快速首读间隔
+#define BATT_BOOT_TIMEOUT_MS  500  // 首读短时重试窗口
+#if BOARD_AI_PASSPORT
+// CW2017 电量计配置
 #define CW2017_WRITE_PROFILE  1   // 1=按选定 profile 写芯片(默认);0=用芯片自带 Li-Poly profile
 #define CW2017_PROFILE_SEL    1   // 选用 CW2017_PROFILES[] 里第几个 profile(1=4.2v_520mah)
+#endif
 // ===== 调试/测试开关(平时都置 0)=====
 // 麦克风直通扬声器:置 1 后开机即把麦克风采集实时输出到扬声器(对着麦说话能听到自己),
 // 用于排查 ES8311 输入/输出通路是否正常。
@@ -74,35 +100,67 @@ typedef int spi_host_device_t;
 // BLE 设备名
 #define BLE_DEVICE_NAME "TRAE-CARD"
 
-// 按钮数量(ADC 按键:上/下/确定 3 键,共用 GPIO0=ADC1_CH0)
-#define BTN_COUNT 3
+// 按钮数量
+#if BOARD_M5STACK_STOPWATCH
+#define BTN_COUNT 2   // StopWatch: Button1 (G2) + Button2 (G1)
+#else
+#define BTN_COUNT 3   // AI PASSPORT: ADC 按键:上/下/确定 3 键,共用 GPIO0=ADC1_CH0
+#endif
 
-// 显示反色:1=开启反转(INVON 0x21),0=关闭(INVOFF 0x20)。
+// 显示反色
+#if BOARD_AI_PASSPORT
 // ST7789P3(T200H7-C14-05)参考例程 TFT_init() 末尾无条件发送 0x21(INVON),
 // 故默认开启;若换屏后颜色为负片,再改回 0。
 #define LCD_INVERT_COLOR 1
+#else
+// StopWatch CO5300 AMOLED 不需要反色
+#define LCD_INVERT_COLOR 0
+#endif
 
 typedef struct {
-    // --- LCD (ST7789P3, 4-line SPI) ---
+    // --- LCD ---
     uint16_t lcd_w, lcd_h;
     spi_host_device_t lcd_spi_host;
+#if BOARD_AI_PASSPORT
+    // AI PASSPORT: ST7789P3 4-line SPI
     int lcd_mosi, lcd_sclk, lcd_cs, lcd_dc, lcd_rst, lcd_bl;
+#elif BOARD_M5STACK_STOPWATCH
+    // StopWatch: CO5300 QSPI (使用 data0-3 而非 mosi)
+    int lcd_qspi_d0, lcd_qspi_d1, lcd_qspi_d2, lcd_qspi_d3;
+    int lcd_qspi_sck, lcd_qspi_cs;
+    // GPIO扩展器控制的引脚 (通过 M5IOE1 间接控制,非直连)
+    // lcd_rst 和 lcd_bl 由 M5IOE1 GPIO 扩展器管理
+#endif
     uint32_t lcd_pclk_hz;
-    // --- Button (ADC 按键:共用 GPIO0=ADC1_CH0,外部 10k 上拉;分压 0/1k/2.2k = 上/下/确定) ---
+    
+    // --- Button ---
+#if BOARD_AI_PASSPORT
+    // AI PASSPORT: ADC 按键,共用 GPIO0=ADC1_CH0,外部 10k 上拉;分压 0/1k/2.2k = 上/下/确定
     int btn_adc_channel;        // ADC1 通道号(GPIO0 = 0)
-    int btn_wakeup_gpio;        // 深睡唤醒 GPIO；ADC 三键按下均将此节点拉为低电平
+    int btn_wakeup_gpio;        // 深睡唤醒 GPIO
     int btn_gpio[BTN_COUNT];    // ADC 按键不使用,保留字段兼容旧代码
     uint8_t btn_active_level;   // ADC 按键不使用
+#elif BOARD_M5STACK_STOPWATCH
+    // StopWatch: 独立GPIO按钮
+    int btn_gpio[BTN_COUNT];    // Button1=GPIO2, Button2=GPIO1
+    uint8_t btn_active_level;   // 低电平有效
+    int btn_wakeup_gpio;        // 深睡唤醒 GPIO
+#endif
+
     // --- Audio (ES8311) ---
     int i2c_sda, i2c_scl;
     int i2s_mclk, i2s_bclk, i2s_ws, i2s_dout, i2s_din, pa_ctrl;
+    
+#if BOARD_M5STACK_STOPWATCH
+    // StopWatch 特有:触摸屏中断引脚 (CST820B)
+    int touch_int_gpio;
+#endif
 } board_config_t;
 
-// 占位引脚(请按实际原理图修改)。ESP32-C3 仅有 GPIO 0..21,且 GPIO 11..17 通常用于
-// 板载 SPI flash。下面优先保证"显示+LED+按钮"占用 0..10 各不冲突;C3 引脚总数有限,
-// 同时启用音频(I2C/I2S 共 8 脚)会与显示引脚重叠,接音频时需重新规划引脚。
+#if BOARD_AI_PASSPORT
+// ===== AI PASSPORT ESP32-C3 配置 =====
+// ESP32-C3 仅有 GPIO 0..21,且 GPIO 11..17 通常用于板载 SPI flash。
 // lcd_rst = -1 表示复位脚不接 MCU(硬接 3.3V),改由软件复位命令初始化。
-// 复合字面量中未列出的字段默认为 0;其余外设引脚见下方示例,需要时再填。
 #define BOARD_CONFIG_DEFAULT() (board_config_t){              \
     /* --- LCD ST7789P3 240x320, 4-line SPI --- */           \
     .lcd_w = 240, .lcd_h = 320,                               \
@@ -112,13 +170,51 @@ typedef struct {
     .lcd_pclk_hz = 80 * 1000 * 1000,                          \
     /* --- Button: ADC 按键,GPIO0 = ADC1_CH0 --- */          \
     .btn_adc_channel = 0,                                     \
-    .btn_wakeup_gpio = 0,                                    \
-    /* --- Audio ES8311(已调通,勿动) --- */                  \
+    .btn_wakeup_gpio = 0,                                     \
+    .btn_gpio = {0, 0, 0},                                    \
+    .btn_active_level = 0,                                    \
+    /* --- Audio ES8311 --- */                                \
     .i2c_sda = 10, .i2c_scl = 7,                              \
     .i2s_mclk = 6, .i2s_bclk = 5, .i2s_ws = 3,                \
     .i2s_dout = 2, .i2s_din = 4, .pa_ctrl = -1,               \
 }
-// 其余外设引脚示例(默认 0;若启用对应 PERIPH_* 请按原理图填写并取消注释):
-//   .i2c_sda = 18, .i2c_scl = 19,
-//   .i2s_mclk = 20, .i2s_bclk = 21, .i2s_ws = 9,
-//   .i2s_dout = 10, .i2s_din = 5, .pa_ctrl = 4,
+
+#elif BOARD_M5STACK_STOPWATCH
+// ===== M5Stack StopWatch ESP32-S3 配置 =====
+// 硬件规格:
+//   MCU: ESP32-S3-WROOM-1 (16MB Flash, 8MB Octal PSRAM)
+//   Display: CO5300 466x466 1.75" 圆形 AMOLED, QSPI 接口
+//   Touch: CST820B @0x15 (I2C)
+//   Audio: ES8311 @0x18 (I2C), 半双工 (麦克风和扬声器不能同时工作)
+//   GPIO扩展器: M5IOE1 @0x4F (I2C)
+//   PMIC: M5PM1 @0x6E (I2C)
+//   USB: GPIO19/20 USB-Serial-JTAG (保留用于烧录和日志)
+// 
+// M5IOE1 GPIO 分配:
+//   PYG8: 显示电源使能, PYG5: 显示复位, PYG4: 触摸复位
+//   PYG3: 音频 Codec 电源, PYG10: 功放使能, PYG9: 马达
+#define BOARD_CONFIG_DEFAULT() (board_config_t){              \
+    /* --- LCD CO5300 466x466, QSPI --- */                   \
+    .lcd_w = 466, .lcd_h = 466,                               \
+    .lcd_spi_host = SPI2_HOST,                                \
+    .lcd_qspi_d0 = 41, .lcd_qspi_d1 = 42,                    \
+    .lcd_qspi_d2 = 46, .lcd_qspi_d3 = 45,                    \
+    .lcd_qspi_sck = 40, .lcd_qspi_cs = 39,                   \
+    .lcd_pclk_hz = 40 * 1000 * 1000,                          \
+    /* 注: lcd_rst 和 lcd_bl 由 M5IOE1 扩展器控制,非直连 */    \
+    /* --- Button: GPIO 独立按钮 --- */                      \
+    .btn_gpio = {2, 1},  /* Button1=GPIO2, Button2=GPIO1 */  \
+    .btn_active_level = 0,  /* 低电平有效 */                 \
+    .btn_wakeup_gpio = 2,   /* Button1 唤醒 */               \
+    /* --- Audio ES8311 (半双工) --- */                      \
+    .i2c_sda = 47, .i2c_scl = 48,                             \
+    .i2s_mclk = 18, .i2s_bclk = 17, .i2s_ws = 15,            \
+    .i2s_dout = 21, .i2s_din = 16, .pa_ctrl = -1,            \
+    /* 注: DOUT=21 (speaker), DIN=16 (mic) per官方v2.5.2 */  \
+    /* --- Touch --- */                                       \
+    .touch_int_gpio = 13,  /* CST820B 中断引脚 */            \
+}
+
+#else
+#error "No board configuration defined"
+#endif
