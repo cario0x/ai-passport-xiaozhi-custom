@@ -351,6 +351,12 @@ static int es_rate(hal_audio_t *self, uint32_t hz, uint8_t bits, uint8_t ch) {
         int mute_result = esp_codec_dev_set_out_mute(d, c->out_muted);
         c->opened = true;
         c->cur_hz = hz; c->cur_bits = bits; c->cur_ch = ch;
+        
+#if BOARD_M5STACK_STOPWATCH
+        // Half-duplex: enable PA after codec open (controlled via M5IOE1)
+        stopwatch_speaker_enable(true);
+#endif
+        
         es_meter_enable(c, !mute_result && !c->out_muted && c->requested_volume && bits == 16);
         ESP_LOGD(TAG, "codec 打开 %uHz/%ubit/%uch", (unsigned)hz, bits, ch);
     } else {

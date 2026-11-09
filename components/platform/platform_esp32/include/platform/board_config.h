@@ -209,8 +209,8 @@ typedef struct {
     /* --- Audio ES8311 (半双工) --- */                      \
     .i2c_sda = 47, .i2c_scl = 48,                             \
     .i2s_mclk = 18, .i2s_bclk = 17, .i2s_ws = 15,            \
-    .i2s_dout = 16, .i2s_din = 21, .pa_ctrl = -1,            \
-    /* 注: pa_ctrl 由 M5IOE1 扩展器控制 (PYG10) */           \
+    .i2s_dout = 21, .i2s_din = 16, .pa_ctrl = -1,            \
+    /* 注: DOUT=21 (speaker), DIN=16 (mic) per官方v2.5.2 */  \
     /* --- Touch --- */                                       \
     .touch_int_gpio = 13,  /* CST820B 中断引脚 */            \
 }
