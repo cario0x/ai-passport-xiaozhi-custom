@@ -14,6 +14,10 @@
 #include <string.h>
 #include <stdatomic.h>
 
+#if BOARD_M5STACK_STOPWATCH
+#include "platform/stopwatch_hardware.h"
+#endif
+
 static const char *TAG = "audio_es8311";
 
 // cur_*:当前 codec 已打开的格式。esp_codec_dev_open 在"已打开"时会直接返回 OK 且
@@ -240,6 +244,12 @@ static void es_close(es_ctx_t *c) {
     es_meter_enable(c, false);
     // Mute before disabling clocks; keep out_muted as the caller's preference.
     (void)esp_codec_dev_set_out_mute(c->dev, true);
+    
+#if BOARD_M5STACK_STOPWATCH
+    // Half-duplex: disable PA when closing codec
+    stopwatch_speaker_enable(false);
+#endif
+    
     // open may set SDK input/output_opened before set_fs/enable fails. Always
     // close, even when our own opened flag is false, to remove that partial state.
     (void)esp_codec_dev_close(c->dev);

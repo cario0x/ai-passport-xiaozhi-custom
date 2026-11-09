@@ -3,8 +3,10 @@
 // 电量计自带 FastCali,直接给 SOC 百分比(0x04 高字节即整数%),无需采样电阻/电压查表。
 // 默认关闭时(PERIPH_BATTERY=0)本文件整段空编译;启用后总线上无芯片则探测失败返回 NULL,
 // 上层显示电量未知,不崩。电池 profile 见 cw2017_profiles.h(可切换),写入流程见下。
+// 
+// AI PASSPORT 专用: StopWatch 使用 battery_m5pm1.c
 #include "platform/board_config.h"
-#if PERIPH_BATTERY
+#if PERIPH_BATTERY && BOARD_AI_PASSPORT
 #include "platform/platform_factory.h"
 #include "hal/hal_battery.h"
 #include "cw2017_profiles.h"
@@ -298,7 +300,5 @@ hal_battery_t *platform_create_battery(const board_config_t *cfg) {
     }
     return &s_handle;
 }
-#else  // PERIPH_BATTERY==0
-#include "platform/platform_factory.h"
-hal_battery_t *platform_create_battery(const board_config_t *cfg) { (void)cfg; return 0; }
-#endif
+
+#endif // PERIPH_BATTERY && BOARD_AI_PASSPORT

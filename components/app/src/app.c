@@ -7,6 +7,10 @@
 #include "app/app.h"
 #include "platform/platform_factory.h"
 #include "platform/board_config.h"
+#if BOARD_M5STACK_STOPWATCH
+#include "platform/stopwatch_hardware.h"
+#include <driver/i2c_master.h>
+#endif
 #include "services/ui_model.h"
 #include "services/battery.h"
 #include "services/factory_test.h"
@@ -2676,6 +2680,26 @@ void app_run(void) {
     static const board_config_t board = BOARD_CONFIG_DEFAULT();
     const bool woke_from_deep_sleep =
         esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO;
+
+#if BOARD_M5STACK_STOPWATCH
+    // Initialize StopWatch hardware early: M5IOE1 and M5PM1 must be ready
+    // before display, audio, and battery initialization
+    i2c_master_bus_config_t i2c_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = (gpio_num_t)board.i2c_sda,
+        .scl_io_num = (gpio_num_t)board.i2c_scl,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = 1,
+    };
+    i2c_master_bus_handle_t i2c_bus = NULL;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus));
+    
+    if (stopwatch_hardware_init(i2c_bus) != 0) {
+        ESP_LOGE(TAG, "Failed to initialize StopWatch hardware");
+        abort();
+    }
+#endif
 
     // ui_model 始终存在,作为各业务的共享状态。
     static ui_model_t model; ui_model_init(&model);

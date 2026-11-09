@@ -56,6 +56,21 @@ static void round_active_screen(lv_event_t *e) {
 #endif
 }
 
+#if BOARD_M5STACK_STOPWATCH
+// Round display coordinate rounder: align drawing areas to 2-pixel boundaries
+// to prevent QSPI partial update artifacts on CO5300 AMOLED
+static void platform_round_display_rounder(lv_event_t *e) {
+    lv_area_t *area = (lv_area_t *)lv_event_get_param(e);
+    if (!area) return;
+    
+    // Align to 2-pixel grid (from upstream m5stack_stopwatch.cc)
+    area->x1 = (area->x1 >> 1) << 1;
+    area->y1 = (area->y1 >> 1) << 1;
+    area->x2 = ((area->x2 >> 1) << 1) + 1;
+    area->y2 = ((area->y2 >> 1) << 1) + 1;
+}
+#endif
+
 lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg) {
     lvgl_port_cfg_t pc = ESP_LVGL_PORT_INIT_CONFIG();
     // Native20 fallback decoding leaves1536B on the SDK's7168B task in the
@@ -94,6 +109,11 @@ lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg)
         // 每次任意屏幕加载 → 统一加圆角;当前已激活屏也补一次
         lv_display_add_event_cb(d, round_active_screen, LV_EVENT_SCREEN_LOADED, NULL);
         round_active_screen(NULL);
+#endif
+#if BOARD_M5STACK_STOPWATCH
+        // Round display coordinate rounder: align drawing areas to 2-pixel boundaries
+        // to avoid QSPI partial updates causing AMOLED flicker
+        lv_display_add_event_cb(d, platform_round_display_rounder, LV_EVENT_INVALIDATE_AREA, NULL);
 #endif
         lvgl_port_unlock();
     }

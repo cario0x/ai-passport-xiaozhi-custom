@@ -6,6 +6,9 @@
 #include "platform/board_config.h"
 #if PERIPH_DISPLAY
 #include "hal/hal_display.h"
+#if BOARD_M5STACK_STOPWATCH
+#include "platform/stopwatch_hardware.h"
+#endif
 #include "driver/spi_master.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
@@ -298,8 +301,9 @@ hal_display_t *platform_create_display(const board_config_t *cfg) {
 
 #elif BOARD_M5STACK_STOPWATCH
     // ========== StopWatch: CO5300 QSPI AMOLED ==========
-    // 注意: M5IOE1 GPIO 扩展器的显示电源/复位初始化应在此函数外部完成
-    // 这里假设 M5IOE1 已初始化且显示电源已开启
+    // M5IOE1 GPIO expander must be initialized before this
+    // Perform LCD hardware reset via M5IOE1
+    stopwatch_lcd_reset();
     
     spi_bus_config_t bus = {
         .sclk_io_num = cfg->lcd_qspi_sck,
