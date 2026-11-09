@@ -36,6 +36,7 @@ typedef struct {
     bool     i2s_needs_enable; // close 后时钟已停，只能由成功的 open 恢复
     bool     echo_capture;    // temporary ADC + DAC reference stereo capture
     bool     out_muted;        // HAL 请求；失败清理的临时静音不能覆盖它
+    bool     i2c_bus_is_shared; // StopWatch: I2C bus shared with hardware (don't delete)
     // Aligned 32-bit ISR counter: one writer, task only reads snapshots.
     volatile uint32_t rx_overflows;
     uint32_t echo_overflows_seen;
@@ -505,6 +506,24 @@ hal_audio_t *platform_create_audio(const board_config_t *cfg) {
     if (c) c->out_muted = true;
 
     // 1) I2C master 总线(ES8311 控制口)
+    // StopWatch: I2C bus shared with M5IOE1/M5PM1/CST820B, already created in app.c
+    // AI PASSPORT: Dedicated audio I2C bus, create here
+    i2c_master_bus_handle_t i2c_bus = NULL;
+    bool i2c_bus_is_shared = false;
+    
+#if BOARD_M5STACK_STOPWATCH
+    // Use shared I2C bus created in app.c for hardware init
+    extern i2c_master_bus_handle_t g_stopwatch_i2c_bus;
+    if (g_stopwatch_i2c_bus) {
+        i2c_bus = g_stopwatch_i2c_bus;
+        i2c_bus_is_shared = true;
+        ESP_LOGI(TAG, "Using shared I2C bus for ES8311 (StopWatch)");
+    } else {
+        ESP_LOGE(TAG, "Shared I2C bus not available (g_stopwatch_i2c_bus is NULL)");
+        goto done;
+    }
+#else
+    // AI PASSPORT: Create dedicated I2C bus for audio
     i2c_master_bus_config_t i2c_cfg = {
         .i2c_port = I2C_NUM_0,
         .sda_io_num = cfg->i2c_sda,
@@ -526,9 +545,9 @@ hal_audio_t *platform_create_audio(const board_config_t *cfg) {
     }
 #endif
 
-    i2c_master_bus_handle_t i2c_bus = NULL;
     esp_err_t e = i2c_new_master_bus(&i2c_cfg, &i2c_bus);
     if (e != ESP_OK) { ESP_LOGE(TAG, "i2c_new_master_bus 失败: %d", e); goto done; }
+#endif
 
     const audio_codec_ctrl_if_t *ctrl_if = audio_codec_new_i2c_ctrl(&(audio_codec_i2c_cfg_t){
         .port = I2C_NUM_0,
@@ -537,6 +556,7 @@ hal_audio_t *platform_create_audio(const board_config_t *cfg) {
     });
     if (!ctrl_if) { ESP_LOGE(TAG, "audio_codec_new_i2c_ctrl 失败"); goto done; }
     c->ctrl_if = ctrl_if;
+    c->i2c_bus_is_shared = i2c_bus_is_shared;
     c->i2c_pins[0] = cfg->i2c_sda;
     c->i2c_pins[1] = cfg->i2c_scl;
 
