@@ -10,6 +10,8 @@
 #if BOARD_M5STACK_STOPWATCH
 #include "platform/stopwatch_hardware.h"
 #include <driver/i2c_master.h>
+// Global I2C bus handle for touch controller (initialized in app_run)
+i2c_master_bus_handle_t g_stopwatch_i2c_bus = NULL;
 #endif
 #include "services/ui_model.h"
 #include "services/battery.h"
@@ -2684,6 +2686,8 @@ void app_run(void) {
 #if BOARD_M5STACK_STOPWATCH
     // Initialize StopWatch hardware early: M5IOE1 and M5PM1 must be ready
     // before display, audio, and battery initialization
+    // I2C bus is also used by touch controller later
+    static i2c_master_bus_handle_t s_stopwatch_i2c_bus = NULL;
     i2c_master_bus_config_t i2c_cfg = {
         .i2c_port = I2C_NUM_0,
         .sda_io_num = (gpio_num_t)board.i2c_sda,
@@ -2692,13 +2696,16 @@ void app_run(void) {
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = 1,
     };
-    i2c_master_bus_handle_t i2c_bus = NULL;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus));
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &s_stopwatch_i2c_bus));
     
-    if (stopwatch_hardware_init(i2c_bus) != 0) {
+    if (stopwatch_hardware_init(s_stopwatch_i2c_bus) != 0) {
         ESP_LOGE(TAG, "Failed to initialize StopWatch hardware");
         abort();
     }
+    
+    // Expose I2C bus for touch controller initialization
+    extern i2c_master_bus_handle_t g_stopwatch_i2c_bus;
+    g_stopwatch_i2c_bus = s_stopwatch_i2c_bus;
 #endif
 
     // ui_model 始终存在,作为各业务的共享状态。

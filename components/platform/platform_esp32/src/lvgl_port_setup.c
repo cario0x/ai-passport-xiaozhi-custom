@@ -9,6 +9,13 @@
 #include "esp_log.h"
 #include <stdbool.h>
 
+#if BOARD_M5STACK_STOPWATCH
+#include "esp_lcd_touch.h"
+#include "esp_lcd_touch_cst816s.h"
+#include "driver/i2c_master.h"
+#include "platform/stopwatch_hardware.h"
+#endif
+
 static bool s_nav_enabled = true;
 
 typedef struct {
@@ -117,6 +124,59 @@ lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg)
 #endif
         lvgl_port_unlock();
     }
+
+#if BOARD_M5STACK_STOPWATCH
+    // Initialize CST820B touch input for StopWatch
+    // Touch controller shares I2C bus, reset via M5IOE1 PYG4, INT on GPIO13
+    extern i2c_master_bus_handle_t g_stopwatch_i2c_bus;  // From app.c
+    if (g_stopwatch_i2c_bus && d) {
+        ESP_LOGI("lvgl_touch", "Initializing CST820B touch controller");
+        
+        // Create I2C panel IO for touch
+        esp_lcd_panel_io_handle_t touch_io = NULL;
+        esp_lcd_panel_io_i2c_config_t io_config = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
+        esp_err_t err = esp_lcd_new_panel_io_i2c(g_stopwatch_i2c_bus, &io_config, &touch_io);
+        if (err != ESP_OK) {
+            ESP_LOGE("lvgl_touch", "Failed to create touch I2C IO: %s", esp_err_to_name(err));
+        } else {
+            // Configure touch controller
+            esp_lcd_touch_config_t touch_cfg = {
+                .x_max = cfg->lcd_w,
+                .y_max = cfg->lcd_h,
+                .rst_gpio_num = GPIO_NUM_NC,  // Reset via M5IOE1, not direct GPIO
+                .int_gpio_num = 13,           // GPIO13 interrupt
+                .levels = {
+                    .reset = 0,
+                    .interrupt = 0,
+                },
+                .flags = {
+                    .swap_xy = 0,
+                    .mirror_x = 0,
+                    .mirror_y = 0,
+                },
+            };
+            
+            esp_lcd_touch_handle_t touch_handle = NULL;
+            err = esp_lcd_touch_new_i2c_cst816s(touch_io, &touch_cfg, &touch_handle);
+            if (err != ESP_OK) {
+                ESP_LOGE("lvgl_touch", "Failed to create CST820B touch: %s", esp_err_to_name(err));
+            } else {
+                // Register touch with LVGL
+                const lvgl_port_touch_cfg_t lvgl_touch_cfg = {
+                    .disp = d,
+                    .handle = touch_handle,
+                };
+                lv_indev_t *touch_indev = lvgl_port_add_touch(&lvgl_touch_cfg);
+                if (touch_indev) {
+                    ESP_LOGI("lvgl_touch", "CST820B touch registered with LVGL");
+                } else {
+                    ESP_LOGE("lvgl_touch", "Failed to register touch with LVGL");
+                }
+            }
+        }
+    }
+#endif
+
     return d;
 }
 
