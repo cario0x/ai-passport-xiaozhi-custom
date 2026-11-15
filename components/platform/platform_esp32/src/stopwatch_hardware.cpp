@@ -127,6 +127,22 @@ extern "C" void stopwatch_lcd_reset(void) {
     ESP_LOGD(TAG, "LCD reset sequence complete");
 }
 
+// CST820B reset via M5IOE1 PYG4. Official StopWatch board documents the pin
+// (config.h IOE_PIN_TOUCH_RST) but does not init CTP in m5stack_stopwatch.cc.
+// Timing follows upstream CST816S boards that reset through an IO expander
+// (e.g. waveshare esp32-c5-touch-lcd-1.69): hold low, then release high.
+extern "C" void stopwatch_touch_reset(void) {
+    if (!s_initialized) {
+        ESP_LOGE(TAG, "Hardware not initialized; skip touch reset");
+        return;
+    }
+    s_ioe.digitalWrite(IOE_PIN_TOUCH_RST, LOW);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    s_ioe.digitalWrite(IOE_PIN_TOUCH_RST, HIGH);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "CST820B touch reset complete (M5IOE1 PYG4)");
+}
+
 // Speaker amplifier control (half-duplex audio)
 extern "C" void stopwatch_speaker_enable(bool enable) {
     if (!s_initialized) return;

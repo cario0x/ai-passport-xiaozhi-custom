@@ -1,9 +1,12 @@
 #include "presentation/ui_theme.h"
+#include "presentation/ui_round_layout.h"
 
 lv_obj_t *ui_theme_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_remove_style_all(screen);
-    lv_obj_set_size(screen, 240, 320);
+    // Passport UI is 240×320. On StopWatch, center that frame on 466×466 so
+    // absolute passport coordinates and touch hit-testing stay aligned.
+    ui_round_center_passport_screen(screen);
     lv_obj_set_style_bg_color(screen, lv_color_hex(UI_BG), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(screen, lv_color_hex(UI_INK), 0);

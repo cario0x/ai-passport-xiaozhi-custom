@@ -136,25 +136,40 @@ lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg)
     }
 
 #if BOARD_M5STACK_STOPWATCH
-    // Initialize CST820B touch input for StopWatch
-    // Touch controller shares I2C bus, reset via M5IOE1 PYG4, INT on GPIO13
+    // Letterbox behind centered 240×320 passport screens on the round panel.
+    if (d && lvgl_port_lock(0)) {
+        lv_obj_t *bottom = lv_layer_bottom();
+        if (bottom) {
+            lv_obj_set_style_bg_color(bottom, lv_color_black(), 0);
+            lv_obj_set_style_bg_opa(bottom, LV_OPA_COVER, 0);
+        }
+        lvgl_port_unlock();
+    }
+
+    // CST820B @0x15 on shared SYS_I2C (official StopWatch README / config.h).
+    // Official m5stack_stopwatch.cc does not install a CTP driver; this path is
+    // adapted from upstream CST816S + IO-expander boards (same I2C addr/family).
     extern i2c_master_bus_handle_t g_stopwatch_i2c_bus;  // From app.c
     if (g_stopwatch_i2c_bus && d) {
-        ESP_LOGI("lvgl_touch", "Initializing CST820B touch controller");
-        
-        // Create I2C panel IO for touch
+        ESP_LOGI("lvgl_touch", "Initializing CST820B touch (addr 0x15, INT GPIO13)");
+
+        // Hardware reset before probing the controller (M5IOE1 PYG4).
+        stopwatch_touch_reset();
+
         esp_lcd_panel_io_handle_t touch_io = NULL;
+        // Explicit IO config matches upstream CST816S examples (disable control
+        // phase, 400kHz). Macro alone left scl_speed unspecified on some IDF builds.
         esp_lcd_panel_io_i2c_config_t io_config = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
+        io_config.scl_speed_hz = 400 * 1000;
         esp_err_t err = esp_lcd_new_panel_io_i2c(g_stopwatch_i2c_bus, &io_config, &touch_io);
         if (err != ESP_OK) {
             ESP_LOGE("lvgl_touch", "Failed to create touch I2C IO: %s", esp_err_to_name(err));
         } else {
-            // Configure touch controller
             esp_lcd_touch_config_t touch_cfg = {
                 .x_max = cfg->lcd_w,
                 .y_max = cfg->lcd_h,
-                .rst_gpio_num = GPIO_NUM_NC,  // Reset via M5IOE1, not direct GPIO
-                .int_gpio_num = 13,           // GPIO13 interrupt
+                .rst_gpio_num = GPIO_NUM_NC,  // Reset via M5IOE1, not MCU GPIO
+                .int_gpio_num = (gpio_num_t)cfg->touch_int_gpio,  // GPIO13
                 .levels = {
                     .reset = 0,
                     .interrupt = 0,
@@ -165,25 +180,28 @@ lv_display_t *platform_lvgl_init(hal_display_t *disp, const board_config_t *cfg)
                     .mirror_y = 0,
                 },
             };
-            
+
             esp_lcd_touch_handle_t touch_handle = NULL;
             err = esp_lcd_touch_new_i2c_cst816s(touch_io, &touch_cfg, &touch_handle);
             if (err != ESP_OK) {
                 ESP_LOGE("lvgl_touch", "Failed to create CST820B touch: %s", esp_err_to_name(err));
             } else {
-                // Register touch with LVGL
                 const lvgl_port_touch_cfg_t lvgl_touch_cfg = {
                     .disp = d,
                     .handle = touch_handle,
                 };
                 lv_indev_t *touch_indev = lvgl_port_add_touch(&lvgl_touch_cfg);
                 if (touch_indev) {
-                    ESP_LOGI("lvgl_touch", "CST820B touch registered with LVGL");
+                    ESP_LOGI("lvgl_touch", "CST820B touch registered with LVGL (display %ux%u)",
+                             (unsigned)cfg->lcd_w, (unsigned)cfg->lcd_h);
                 } else {
                     ESP_LOGE("lvgl_touch", "Failed to register touch with LVGL");
                 }
             }
         }
+    } else {
+        ESP_LOGE("lvgl_touch", "Touch skipped: bus=%p disp=%p",
+                 (void *)g_stopwatch_i2c_bus, (void *)d);
     }
 #endif
 

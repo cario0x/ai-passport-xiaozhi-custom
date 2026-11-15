@@ -37,6 +37,12 @@ void* stopwatch_get_pmic(void);
 void stopwatch_lcd_reset(void);
 
 /**
+ * @brief Pulse CST820B touch reset via M5IOE1 (IOE_PIN_TOUCH_RST / PYG4).
+ * Must run before esp_lcd_touch_new_i2c_cst816s().
+ */
+void stopwatch_touch_reset(void);
+
+/**
  * @brief Control speaker amplifier (half-duplex audio)
  * @param enable true to enable, false to disable
  */

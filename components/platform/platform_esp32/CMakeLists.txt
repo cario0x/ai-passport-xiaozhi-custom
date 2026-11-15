@@ -14,4 +14,5 @@ idf_component_register(
     PRIV_REQUIRES presentation esp_lvgl_port button esp_codec_dev esp_hw_support bt nvs_flash
                   esp_driver_i2c esp_driver_i2s esp_partition esp_new_jpeg esp_adc
                   mbedtls esp_driver_usb_serial_jtag esp_rom spiffs
-                  m5stack__m5ioe1 m5stack__m5pm1 espressif__esp_lcd_co5300)
+                  m5stack__m5ioe1 m5stack__m5pm1 espressif__esp_lcd_co5300
+                  espressif__esp_lcd_touch_cst816s)
