@@ -63,6 +63,27 @@ interruption); no further device action after that window.
 disconnected call `HandleProvisionOrChat` (EnterWifiConfigMode or AP SSID/URL toast);
 keep status bar visible; labeled `INPUT_*` logs.
 
+## Hardware evidence — package `a9ad19d` / app `d72d8ae8…` (t67u 16:20)
+
+Confirmed flash of input-semantics build. Wi-Fi + MQTT to `api.tenclass.net` connected;
+idle + WakeNet in 90s logs. User: **左右按键正常 但是无法触摸屏幕** — B1/B2 work; screen
+touch does not. Photo (real device, not simulation): fullscreen Passport welcome still
+showing `配置网络` + `请按右侧按钮开始` while already online; status text **聆听中...**
+smeared over the avatar forehead.
+
+| Observation | Source diagnosis (not claimed sole root cause) |
+|-------------|--------------------------------------------------|
+| Buttons work; CTP IC=183 still inits; no `INPUT_*` / CTA click in 90s | Input framework not wholly dead; CTP driver not declared dead |
+| Contrast: `68690f0` had one CTA CLICKED | a9ad19d touch init unchanged except status_bar unhide/foreground |
+| `status_bar_` over face, default CLICKABLE | Steals upper-screen hits; explains smeared 聆听中 (photo) |
+| Fullscreen `stage_` default CLICKABLE, no handler | Empty taps silent (no INPUT_*) |
+| INT=G13 → LVGL EVENT mode | Touches only read on INT edge; poll-mode is a reliability lever |
+| Stale provision CTA while STA+MQTT up | Welcome layer never gated on `IsConnected()` |
+
+**Follow-up fix:** status pill top-chord + non-clickable; stage non-clickable; CTA only when
+`!connected`; online face/chord → ToggleChat; CTP **poll-mode** (`int=NC`) + `INPUT_RAW_TOUCH`
+coord logs. B1/B2 paths unchanged when connected.
+
 ## Asset notes
 
 Passport girl face PNGs reused from `assets/xiaozhi/faces/face-00-*.png`.

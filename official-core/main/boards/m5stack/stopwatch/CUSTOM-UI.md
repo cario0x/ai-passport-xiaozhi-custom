@@ -18,9 +18,10 @@ uniform scale to ~200 only — no stretch).
 | Strings | `FoloToy` / `小智` / `hi，我是FoloToy的小智` / CTA `配置网络` |
 | Hint (2-btn) | `请按右侧按钮开始` |
 | Emotion → face | Official `SetEmotion` → Passport face frames |
-| Touch | CST820B → CTA → `EnterWifiConfigMode` / AP hint (not `ToggleChatState`) |
+| Touch | CST820B poll-mode indev; CTA provision only when `!connected`; online face/chord → chat |
 | Buttons | B1/B2 while disconnected → provision/hint; B2 when connected → volume + toast |
-| Feedback | `status_bar_` kept visible so `ShowNotification` is readable |
+| Feedback | Status pill in top safe chord, non-clickable; no smeared “聆听中...” on face |
+| Stale UI | Hide `配置网络` / right-button hint once STA connected (t67u photo) |
 
 ## Deferred
 
