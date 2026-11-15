@@ -146,9 +146,23 @@ public:
             lv_obj_move_foreground(top_bar_);
         }
         SyncProvisionUiLocked();
+        // Bind fonts/chrome after stock SetupUI; Assets SetTextFont/SetTheme will
+        // call our SetTheme override before destroying the previous font owner.
+        ApplyPassportChromeLocked();
         lv_display_add_event_cb(display_, rounder_event_cb, LV_EVENT_INVALIDATE_AREA, NULL);
         ESP_LOGI(TAG,
                  "PassportWelcomeLcdDisplay: no top strip; listen/speak text bottom white");
+    }
+
+    // t74u: Assets loads a new CBin text font then "Refreshing display theme...".
+    // LvglDisplay::SetTextFont keeps the previous shared_ptr alive only until
+    // SetTheme returns, then destroys it. Stock SetTheme rebinds screen/status
+    // labels but NOT Passport stage labels — those kept a dangling lv_font_t*
+    // → InstrFetchProhibited in lv_font_get_glyph_width (PC=0). Rebind here.
+    void SetTheme(Theme* theme) override {
+        LcdDisplay::SetTheme(theme);
+        DisplayLockGuard lock(this);
+        ApplyPassportChromeLocked();
     }
 
     void SetStatus(const char* status) override {
@@ -317,6 +331,87 @@ private:
         }
     }
 
+    // Must run under DisplayLockGuard. Called from SetupUI and SetTheme so
+    // Passport labels always hold the *current* theme font before any previous
+    // LvglFont shared_ptr is released (see LvglDisplay::SetTextFont).
+    void ApplyPassportChromeLocked() {
+        auto* lvgl_theme = static_cast<LvglTheme*>(current_theme_);
+        const lv_font_t* text_font = nullptr;
+        if (lvgl_theme != nullptr && lvgl_theme->text_font() != nullptr) {
+            text_font = lvgl_theme->text_font()->font();
+        }
+        if (text_font != nullptr) {
+            if (clock_label_ != nullptr) {
+                lv_obj_set_style_text_font(clock_label_, text_font, 0);
+            }
+            if (bottom_status_ != nullptr) {
+                lv_obj_set_style_text_font(bottom_status_, text_font, 0);
+            }
+            if (bottom_speech_ != nullptr) {
+                lv_obj_set_style_text_font(bottom_speech_, text_font, 0);
+            }
+            // Keep stage_ inheritable path aligned (no stale local font).
+            if (stage_ != nullptr) {
+                lv_obj_set_style_text_font(stage_, text_font, 0);
+            }
+        }
+
+        // Stock SetTheme restores top_bar_ to 50% theme bg — undo that wedge.
+        if (status_bar_ != nullptr) {
+            lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_bg_opa(status_bar_, LV_OPA_TRANSP, 0);
+        }
+        if (top_bar_ != nullptr) {
+            lv_obj_set_style_bg_opa(top_bar_, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_pad_all(top_bar_, 0, 0);
+            lv_obj_set_style_pad_left(top_bar_, kSafeInset + 8, 0);
+            lv_obj_set_style_pad_right(top_bar_, kSafeInset + 8, 0);
+            lv_obj_set_height(top_bar_, LV_SIZE_CONTENT);
+            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, 10);
+            lv_obj_remove_flag(top_bar_, LV_OBJ_FLAG_CLICKABLE);
+            if (network_label_ != nullptr) {
+                lv_obj_set_style_text_color(network_label_, lv_color_hex(0xFFFFFF), 0);
+            }
+            if (battery_label_ != nullptr) {
+                lv_obj_set_style_text_color(battery_label_, lv_color_hex(0xFFFFFF), 0);
+            }
+            if (mute_label_ != nullptr) {
+                lv_obj_set_style_text_color(mute_label_, lv_color_hex(0xFFFFFF), 0);
+            }
+        }
+        if (bottom_bar_ != nullptr) {
+            lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_CLICKABLE);
+        }
+        if (container_ != nullptr) {
+            lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(container_, LV_OBJ_FLAG_CLICKABLE);
+        }
+        if (stage_ != nullptr) {
+            lv_obj_set_style_bg_color(stage_, lv_color_hex(kXzBg), 0);
+            lv_obj_set_style_bg_opa(stage_, LV_OPA_COVER, 0);
+        }
+        if (clock_label_ != nullptr) {
+            lv_obj_set_style_text_color(clock_label_, lv_color_hex(0xFFFFFF), 0);
+        }
+        if (bottom_status_ != nullptr) {
+            lv_obj_set_style_text_color(bottom_status_, lv_color_hex(0xFFFFFF), 0);
+        }
+        if (bottom_speech_ != nullptr) {
+            lv_obj_set_style_text_color(bottom_speech_, lv_color_hex(0xFFFFFF), 0);
+        }
+        if (top_bar_ != nullptr) {
+            lv_obj_move_foreground(top_bar_);
+        }
+        if (bottom_status_ != nullptr) {
+            lv_obj_move_foreground(bottom_status_);
+        }
+        if (bottom_speech_ != nullptr) {
+            lv_obj_move_foreground(bottom_speech_);
+        }
+    }
+
     void SyncProvisionUiLocked() {
         const bool connected = WifiManager::GetInstance().IsConnected();
         const bool show_provision = !connected;
@@ -426,14 +521,10 @@ private:
         // with no handler and no INPUT_* log (t67u: "无法触摸屏幕").
         lv_obj_remove_flag(stage_, LV_OBJ_FLAG_CLICKABLE);
 
-        auto* lvgl_theme = static_cast<LvglTheme*>(current_theme_);
-        const lv_font_t* text_font =
-            (lvgl_theme != nullptr && lvgl_theme->text_font() != nullptr)
-                ? lvgl_theme->text_font()->font()
-                : &lv_font_montserrat_14;
-
         // t72u: pull brand into the visible top chord — no reserved status strip /
         // opaque pill / empty margin above (stock status_bar_ is hidden).
+        // Fonts for dialogue labels are bound in ApplyPassportChromeLocked /
+        // SetTheme — never cache a one-shot raw lv_font_t* across Assets refresh.
         constexpr int kBrandY = 22;
         constexpr int kFaceY = 52;
         const int text_w = kPanel - 2 * (kSafeInset + 12);  // ~330, circular-safe
@@ -453,7 +544,6 @@ private:
         // Clock: top-right white, clear of brand (UpdateStatusBar → SetStatus HH:MM).
         clock_label_ = lv_label_create(stage_);
         lv_label_set_text(clock_label_, "");
-        lv_obj_set_style_text_font(clock_label_, text_font, 0);
         lv_obj_set_style_text_color(clock_label_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_align(clock_label_, LV_ALIGN_TOP_RIGHT, -(kSafeInset + 4), 12);
         lv_obj_remove_flag(clock_label_, LV_OBJ_FLAG_CLICKABLE);
@@ -481,7 +571,6 @@ private:
         bottom_status_ = lv_label_create(stage_);
         lv_label_set_text(bottom_status_, "");
         lv_obj_set_width(bottom_status_, text_w);
-        lv_obj_set_style_text_font(bottom_status_, text_font, 0);
         lv_obj_set_style_text_color(bottom_status_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_align(bottom_status_, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_long_mode(bottom_status_, LV_LABEL_LONG_CLIP);
@@ -492,7 +581,6 @@ private:
         bottom_speech_ = lv_label_create(stage_);
         lv_label_set_text(bottom_speech_, "");
         lv_obj_set_width(bottom_speech_, text_w);
-        lv_obj_set_style_text_font(bottom_speech_, text_font, 0);
         lv_obj_set_style_text_color(bottom_speech_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_align(bottom_speech_, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_long_mode(bottom_speech_, LV_LABEL_LONG_WRAP);
