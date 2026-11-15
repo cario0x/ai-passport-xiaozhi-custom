@@ -2,6 +2,7 @@
 // 首页:状态栏 + 头像 + 昵称/头衔/四行简介 + dock。
 #include "presentation/ui_profile.h"
 #include "presentation/ui_licenses.h"
+#include "presentation/ui_round_layout.h"
 #include "lvgl.h"
 #include "presentation/ui_theme.h"
 #include "presentation/bobo_art.h"
@@ -51,6 +52,7 @@ typedef struct {
     lv_obj_t *dock_val[8];
     lv_obj_t *dock;              // dock 容器
     lv_obj_t *tile[2];           // 玩法与相册；博博始终在玩法内
+    lv_obj_t *stage;             // 240×320 content root (centered on round panels)
 } profile_t;
 static profile_t P;
 static atomic_bool s_ble_connected = ATOMIC_VAR_INIT(false);
@@ -110,11 +112,15 @@ static lv_obj_t *s_scr_ref;
 
 // 头像位默认占位:黑色人物上半身剪影(头 + 肩,底部与两侧被头像框裁掉 → 半身)。
 // show=false 隐藏(有真实头像时)。须在 LVGL 锁内调用。
+static lv_obj_t *profile_content_root(void) {
+    return P.stage ? P.stage : s_scr_ref;
+}
+
 static void avatar_placeholder(bool show) {
-    if (!s_scr_ref) return;
+    if (!profile_content_root()) return;
     if (!show) { if (P.ava_ph) lv_obj_add_flag(P.ava_ph, LV_OBJ_FLAG_HIDDEN); return; }
     if (P.ava_ph) { lv_obj_remove_flag(P.ava_ph, LV_OBJ_FLAG_HIDDEN); return; }
-    lv_obj_t *box = make_box(s_scr_ref, AVA_W, AVA_H, COL_PANEL);
+    lv_obj_t *box = make_box(profile_content_root(), AVA_W, AVA_H, COL_PANEL);
     lv_obj_set_pos(box, P.ava_x, P.ava_y);
     lv_obj_set_style_radius(box, 10, 0);
     pixel_sprite_init();
@@ -126,7 +132,7 @@ static void avatar_placeholder(bool show) {
 
 void ui_profile_show_image(const void *dsc_) {
     const lv_image_dsc_t *dsc = dsc_;
-    if (!s_scr_ref) return;
+    if (!profile_content_root()) return;
     if (dsc == NULL) {                       // 清空头像位 → 恢复默认剪影占位
         if (P.img_cont) { lv_obj_delete(P.img_cont); P.img_cont = NULL; P.img = NULL; }
         avatar_placeholder(true);
@@ -134,7 +140,7 @@ void ui_profile_show_image(const void *dsc_) {
     }
     avatar_placeholder(false);               // 有真实头像:隐藏占位
     if (!P.img_cont) {                       // 首次:建裁剪容器(超出边界的图会被容器裁掉)
-        P.img_cont = lv_obj_create(s_scr_ref);
+        P.img_cont = lv_obj_create(profile_content_root());
         lv_obj_remove_style_all(P.img_cont);
         lv_obj_set_size(P.img_cont, AVA_W, AVA_H);
         lv_obj_set_pos(P.img_cont, P.ava_x, P.ava_y);
@@ -249,21 +255,29 @@ void ui_profile_create(void) {
     if (P.clock) lv_timer_delete(P.clock);
     memset(&P, 0, sizeof(P));
     lv_obj_add_event_cb(scr, profile_deleted, LV_EVENT_DELETE, NULL);
+    // Full screen letterbox; passport stage is the interactive 240×320 frame.
+#if SCREEN_IS_ROUND
+    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+#else
     lv_obj_set_style_bg_color(scr, COL_BG, 0);
+#endif
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(scr, 0, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
+    lv_obj_t *root = ui_round_passport_stage(scr, COL_BG);
+    if (!root) root = scr;
+
     // ---- 状态栏 ----
     // 时间来自系统时钟/BLE 对时；电量来自采样，状态点反映真实 BLE 连接。
-    P.time_lbl = make_label(scr, "--:--", &lv_font_montserrat_24, COL_WHITE);
+    P.time_lbl = make_label(root, "--:--", &lv_font_montserrat_24, COL_WHITE);
     lv_obj_set_pos(P.time_lbl, 12, 8);
-    P.date_lbl = make_label(scr, "---", &lv_font_montserrat_12, COL_GRAY);
+    P.date_lbl = make_label(root, "---", &lv_font_montserrat_12, COL_GRAY);
     lv_obj_set_style_text_letter_space(P.date_lbl, 2, 0);
     lv_obj_set_pos(P.date_lbl, 92, 16);
     // 电量只用图标表达；尚未就绪时保持灰色空轮廓。
-    ui_theme_battery_create(&P.battery, scr);
-    P.online_dot = make_bluetooth(scr);
+    ui_theme_battery_create(&P.battery, root);
+    P.online_dot = make_bluetooth(root);
     P.ble_shown = false;
     lv_obj_align_to(P.online_dot, P.battery.icon, LV_ALIGN_OUT_LEFT_MID, -8, 0);
     refresh_ble_status();
@@ -275,31 +289,33 @@ void ui_profile_create(void) {
     // ---- 头像位(左)----
     // 无默认像素小人:默认留空(背景色),仅在传过头像图后由 show_image 建图片容器填入。
     s_scr_ref = scr;
+    P.stage = (root == scr) ? NULL : root;
     P.ava_x = 12;
     P.ava_y = mid_y0;
     avatar_placeholder(true);   // 默认显示黑色半身剪影(传过头像后会被隐藏)
 
     // ---- 身份(右):昵称 + 可下发头衔 + 四行一句话简介 ----
     const int TEXT_X = 118, TEXT_W = SCREEN_W - 118 - 6;
-    P.name_lbl = make_label(scr, "FoloToy", &ui_font_title, COL_WHITE);
+    P.name_lbl = make_label(root, "FoloToy", &ui_font_title, COL_WHITE);
     lv_obj_set_size(P.name_lbl, TEXT_W, 28);
     lv_label_set_long_mode(P.name_lbl, LV_LABEL_LONG_SCROLL_CIRCULAR);   // 过长循环滚动,不换行撑高
     lv_obj_set_pos(P.name_lbl, TEXT_X, mid_y0 + 4);
-    P.title_lbl = make_label(scr, "NETRUNNER", &ui_font_body, COL_GREEN2);
+    P.title_lbl = make_label(root, "NETRUNNER", &ui_font_body, COL_GREEN2);
     lv_obj_set_size(P.title_lbl, TEXT_W, 20);
     lv_label_set_long_mode(P.title_lbl, LV_LABEL_LONG_DOT);
     lv_obj_set_pos(P.title_lbl, TEXT_X, mid_y0 + 40);
-    P.intro_lbl = make_label(scr, "探索AI的\n无限可能", &ui_font_body, COL_WHITE);
+    P.intro_lbl = make_label(root, "探索AI的\n无限可能", &ui_font_body, COL_WHITE);
     lv_obj_set_size(P.intro_lbl, TEXT_W, lv_font_get_line_height(&ui_font_body) * 4);
     lv_label_set_long_mode(P.intro_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(P.intro_lbl, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_pos(P.intro_lbl, TEXT_X, mid_y0 + 64);
 
     // ---- 底部横向 dock(2 格居中:GAME / ALBUM)----
-    lv_obj_t *dock = lv_obj_create(scr);
+    // Dock is inside the passport stage so hit targets match the visible frame.
+    lv_obj_t *dock = lv_obj_create(root);
     lv_obj_remove_style_all(dock);
     lv_obj_set_size(dock, SCREEN_W, DOCK_H);
-    lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_pos(dock, 0, SCREEN_H - DOCK_H);
     lv_obj_set_style_bg_color(dock, COL_PANEL, 0);
     lv_obj_set_style_bg_opa(dock, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(dock, COL_BORDER, 0);

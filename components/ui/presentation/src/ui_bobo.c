@@ -807,7 +807,7 @@ void ui_bobo_open(const bobo_state_t *state, bobo_load_result_t load_status,
     ui.animation_random = lv_tick_get() ^ state->trip_sequence ^ ((uint32_t)state->collected << 16) ^ 0xB0B01234u;
     if (!ui.animation_random) ui.animation_random = 1;
     ui.previous = lv_screen_active(); ui.screen = ui_theme_screen();
-    lv_screen_load(ui.screen);
+    lv_screen_load(ui_theme_screen_obj(ui.screen));
     if (!bobo_art_ready()) { go(PAGE_ART_UNAVAILABLE, 0); return; }
     ui.save_blocked = load_status == BOBO_SAVE_UNAVAILABLE;
     (void)clock_trusted;
@@ -827,7 +827,8 @@ void ui_bobo_close(void) {
     ui_bobo_exit_cb_t exit = ui.exit; void *user = ui.user;
     ui.screen = NULL; ui.pending = false;
     if (previous && lv_obj_is_valid(previous)) lv_screen_load(previous);
-    lv_obj_delete(screen);
+    lv_obj_t *to_delete = ui_theme_screen_obj(screen);
+    lv_obj_delete(to_delete ? to_delete : screen);
     memset(&ui, 0, sizeof(ui));
     if (exit) exit(user);
 }

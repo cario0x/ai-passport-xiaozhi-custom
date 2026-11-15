@@ -18,6 +18,8 @@ static struct {
   uint32_t expression_at, blink_started, blink_delay;
   bool greeting, setting_error, welcome_drawn, official_dark;
   const xz_theme_t *installed;
+  ui_xiaozhi_touch_fn touch_confirm;
+  void *touch_user;
 } X;
 static void welcome_drawn(lv_event_t *event) { (void)event; X.welcome_drawn = true; }
 bool ui_xiaozhi_welcome_drawn(void) { return X.welcome_drawn; }
@@ -146,6 +148,16 @@ static void select_item(unsigned next) {
   X.selection = next;
   set_focus(next, true);
 }
+void ui_xiaozhi_set_touch_confirm(ui_xiaozhi_touch_fn fn, void *user) {
+  X.touch_confirm = fn;
+  X.touch_user = user;
+}
+static void on_choice_clicked(lv_event_t *event) {
+  // Touch path: ask app to synthesize Passport confirm (index 2).
+  unsigned i = (unsigned)(uintptr_t)lv_event_get_user_data(event);
+  if (i < MENU_COUNT) X.selection = i;
+  if (X.touch_confirm) X.touch_confirm(X.touch_user);
+}
 static void control(const char *s, unsigned i, unsigned count, int y) {
   int width = (216 - (count - 1) * 6) / (int)count;
   lv_obj_t *box = panel(X.root, 12 + i * (width + 6), y, width, 32,
@@ -157,6 +169,9 @@ static void control(const char *s, unsigned i, unsigned count, int y) {
   if (count == 1 && !strcmp(s, "配置网络"))
     X.icon[i] = ui_theme_text(box, LV_SYMBOL_WIFI, 35, 9, 22, &lv_font_montserrat_14,
                              X.selection == i ? XZ_UI_ON_ACCENT : XZ_UI_ACCENT);
+  // StopWatch has no LVGL keypad group; enable direct touch on controls.
+  lv_obj_add_flag(box, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(box, on_choice_clicked, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
 }
 static void motion(lv_timer_t *timer) {
   if (X.root && X.portrait && X.view.avatar==XZ_OFFICIAL_AVATAR) {
@@ -409,16 +424,17 @@ void ui_xiaozhi_open(const xz_view_t *v, const companion_portrait_t *art) {
   memset(&X, 0, sizeof X);
   X.previous = lv_screen_active();
   X.root = ui_theme_screen();
+  lv_obj_t *screen = ui_theme_screen_obj(X.root);
   lv_obj_set_style_bg_color(X.root, lv_color_hex(XZ_UI_BG), 0);
   lv_obj_set_style_text_color(X.root, lv_color_hex(XZ_UI_INK), 0);
-  lv_obj_add_event_cb(X.root, screen_loaded, LV_EVENT_SCREEN_LOADED, NULL);
+  if (screen) lv_obj_add_event_cb(screen, screen_loaded, LV_EVENT_SCREEN_LOADED, NULL);
   X.view = *v;
   X.art = art;
   X.expression_at = X.blink_started = lv_tick_get();
   X.blink_delay = 3400 + v->avatar * 421;
   X.motion = lv_timer_create(motion, 140, NULL);
   render();
-  lv_screen_load(X.root);
+  if (screen) lv_screen_load(screen);
 }
 void ui_xiaozhi_update(const xz_view_t *v, const companion_portrait_t *art) {
   if (!X.root)
@@ -610,7 +626,9 @@ void ui_xiaozhi_close(void) {
     return;
   if (X.motion)
     lv_timer_delete(X.motion);
+  lv_obj_t *screen = ui_theme_screen_obj(X.root);
   lv_screen_load(X.previous);
-  lv_obj_delete(X.root);
+  // Delete the letterbox screen (round) or the root screen (square).
+  lv_obj_delete(screen ? screen : X.root);
   memset(&X, 0, sizeof X);
 }

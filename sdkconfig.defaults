@@ -1,22 +1,26 @@
 # --- 目标芯片 ---
-CONFIG_IDF_TARGET="esp32c3"
-# 注:ESP32-C3 无 PSRAM,故不设 CONFIG_SPIRAM。
+# 支持 ESP32-C3 (AI PASSPORT 原版, 8MB flash, 无 PSRAM) 和
+# ESP32-S3 (M5Stack StopWatch, 16MB flash, 8MB octal PSRAM)
+# 构建时通过 idf.py set-target 选择芯片型号
+CONFIG_IDF_TARGET="esp32s3"
+
+# ESP32-S3 PSRAM 配置 (StopWatch 使用 8MB octal PSRAM)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
 
 # --- Flash / 分区 ---
-# 当前完整分区结束于 0x4FA000,量产目标必须使用 8MB flash。
-# 4MB 开发板即使 app 本体能够启动,也无法容纳 audio/imgava 等完整分区,
-# 不能用于验证完整产品功能,更不能作为量产等价板。
-# 关键:镜像头里的 flash 大小若大于芯片实际容量,启动时 esp_flash_init_default_chip
-# 探测失败 → assert(startup_funcs.c:118) → panic → 无限重启。
+# ESP32-C3 (AI PASSPORT): 8MB flash, 分区结束于 0x800000 (8MB)
+# ESP32-S3 (StopWatch): 16MB flash, 分区可扩展至 0x1000000 (16MB)
 # HEADER_FLASHSIZE_UPDATE 让 idf.py/esptool 在烧录时把实际探测容量写进镜像头,
-# 可避免镜像头容量与芯片不符;它不会扩大片上 flash,也不会使 4MB 芯片容纳当前分区表。
+# 可避免镜像头容量与芯片不符;它不会扩大片上 flash,也不会使小容量芯片容纳大分区表。
 # (该选项与 Secure Boot 不兼容;将来若启用安全启动需改为分构建配置。)
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
-CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_HEADER_FLASHSIZE_UPDATE=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-stopwatch.csv"
 
 # --- LVGL ---
 CONFIG_LV_COLOR_DEPTH_16=y
@@ -30,14 +34,11 @@ CONFIG_LV_FONT_MONTSERRAT_24=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
 CONFIG_LV_FONT_MONTSERRAT_34=y
 
-# --- 控制台:USB-Serial-JTAG(GPIO18/19,C3 原生 USB)---
-# 引脚唯一事实源是 board_config.h 的 BOARD_CONFIG_DEFAULT():
-#   LCD   MOSI=9,SCLK=8,CS=1,DC=20,RST=-1,BL=21
-#   Button GPIO0/ADC1_CH0
-#   I2C   SDA=10,SCL=7
-#   I2S   MCLK=6,BCLK=5,WS=3,DOUT=2,DIN=4,PA=-1
-# GPIO18/19 留给 C3 原生 USB-Serial-JTAG,单根 USB-C 同时用于烧录、日志
-# (printf/ESP_LOG)和产线 AT 指令。UART0 默认 TX=21 与 LCD 背光冲突,故不用 UART0 控制台。
+# --- 控制台:USB-Serial-JTAG ---
+# ESP32-C3 (AI PASSPORT): GPIO18/19 原生 USB-Serial-JTAG
+# ESP32-S3 (StopWatch): GPIO19/20 USB-Serial-JTAG
+# 单根 USB-C 同时用于烧录、日志 (printf/ESP_LOG)
+# StopWatch 引脚配置详见 board_config.h 多板选择逻辑
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=y

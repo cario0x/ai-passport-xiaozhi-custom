@@ -1,3 +1,6 @@
+# 通用分区表 - 兼容 AI PASSPORT (8MB) 和 StopWatch (16MB)
+# AI PASSPORT (ESP32-C3): 8MB flash, 使用至 0x800000
+# StopWatch (ESP32-S3): 16MB flash, 可选用 partitions-stopwatch.csv 获得更大空间
 # Name,   Type, SubType, Offset,  Size
 nvs,      data, nvs,     ,        0x6000,
 phy_init, data, phy,     ,        0x1000,

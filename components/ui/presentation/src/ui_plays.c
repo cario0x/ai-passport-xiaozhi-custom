@@ -52,7 +52,7 @@ void ui_plays_menu(void) {
     }
     lv_obj_t *hint = ui_theme_text(P.screen, "上下选择  确定进入", 12, 289, 216, &ui_font_title, UI_INK);
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-    lv_screen_load(P.screen);
+    lv_screen_load(ui_theme_screen_obj(P.screen));
 }
 void ui_plays_open(ui_play_select_cb_t select, ui_plays_exit_cb_t exit, void *user) {
     if (P.screen) return;
@@ -64,7 +64,8 @@ void ui_plays_open(ui_play_select_cb_t select, ui_plays_exit_cb_t exit, void *us
 void ui_plays_close(void) {
     if (!P.screen) return;
     lv_screen_load(P.previous);
-    lv_obj_delete(P.screen); P.screen = NULL;
+    lv_obj_t *gone = ui_theme_screen_obj(P.screen);
+    lv_obj_delete(gone ? gone : P.screen); P.screen = NULL;
     if (P.exit) P.exit(P.user);
 }
 bool ui_plays_is_active(void) { return P.screen != NULL; }

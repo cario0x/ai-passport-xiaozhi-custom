@@ -3,6 +3,7 @@
 // 提示使用原生 4bpp 文楷；沿用兼容字库处理额外字符。须在持 LVGL 锁时调用。
 #include "presentation/ui_selftest.h"
 #include "presentation/ui_theme.h"
+#include "presentation/ui_round_layout.h"
 #include <string.h>
 
 
@@ -59,11 +60,16 @@ void ui_selftest_open(const char *sn) {
     lv_label_set_text_fmt(snl, "SN %s", sn && sn[0] ? sn : "-");
     lv_obj_align(snl, LV_ALIGN_TOP_LEFT, 6, 38);   // 左上,给右上角电量让位
 
-    // 结果列表(竖向 flex)
+    // 结果列表(竖向 flex) - round safe width
     S.list = lv_obj_create(S.scr);
     lv_obj_remove_style_all(S.list);
+#if SCREEN_IS_ROUND
+    lv_coord_t list_width = ui_round_safe_width_at_height(LV_VER_RES / 4);  // Mid-screen width
+    lv_obj_set_size(S.list, list_width, 194);
+#else
     lv_obj_set_size(S.list, 224, 194);
-    lv_obj_align(S.list, LV_ALIGN_TOP_MID, 0, 58);
+#endif
+    ui_round_align_top(S.list, 58);
     lv_obj_set_flex_flow(S.list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(S.list, 2, 0);
     lv_obj_remove_flag(S.list, LV_OBJ_FLAG_SCROLLABLE);
@@ -71,10 +77,14 @@ void ui_selftest_open(const char *sn) {
     S.prompt = mklabel(S.scr, &ui_font_caption, AMBER);
     lv_label_set_recolor(S.prompt, true);   // 支持 #RRGGBB 段着色(按键达标段变绿)
     lv_label_set_long_mode(S.prompt, LV_LABEL_LONG_WRAP);
+#if SCREEN_IS_ROUND
+    lv_obj_set_width(S.prompt, ui_round_safe_width_at_height(LV_VER_RES / 3));
+#else
     lv_obj_set_width(S.prompt, 228);
+#endif
     lv_obj_set_style_text_align(S.prompt, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(S.prompt, "");
-    lv_obj_align(S.prompt, LV_ALIGN_BOTTOM_MID, 0, -6);
+    ui_round_align_bottom(S.prompt, 6);  // Safe-area aware bottom alignment
 
     lv_screen_load(S.scr);
 }
@@ -122,7 +132,8 @@ void ui_selftest_battery(int soc) {
     S.soc = soc;
     if (!S.batt) {          // 右上角电量(与 SN 同行,分色醒目)
         S.batt = mklabel(S.scr, &ui_font_body, lv_color_white());
-        lv_obj_align(S.batt, LV_ALIGN_TOP_RIGHT, -6, 38);
+        ui_round_align_top(S.batt, 38);
+        lv_obj_align(S.batt, LV_ALIGN_TOP_RIGHT, -6, lv_obj_get_y(S.batt));  // Keep right alignment with safe top
     }
     if (soc < 0) {
         lv_label_set_text(S.batt, "电量 --");

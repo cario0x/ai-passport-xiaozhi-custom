@@ -46,7 +46,7 @@ static void open_guide(const char *sn, const char *key, bool from_menu) {
     lv_obj_t *skip = ui_theme_text(s_scr, from_menu ? "确定 · 返回玩法" : "右侧任意按键 · 跳过", 14, 296, 212,
                                    &ui_font_caption, UI_MUTED);
     lv_obj_set_style_text_align(skip, LV_TEXT_ALIGN_CENTER, 0);
-    lv_screen_load(s_scr);
+    lv_screen_load(ui_theme_screen_obj(s_scr));
     lv_obj_set_style_clip_corner(s_scr, false, 0);
     lv_obj_set_style_radius(s_scr, 0, 0);
 }
@@ -58,7 +58,8 @@ bool ui_button_guide_active(void) { return s_scr != NULL; }
 
 void ui_button_guide_close(void) {
     if (!s_scr) return;
-    lv_obj_t *old = s_scr;
+    lv_obj_t *old = ui_theme_screen_obj(s_scr);
+    if (!old) old = s_scr;
     if (s_prev) lv_screen_load(s_prev);
     s_scr = NULL; s_prev = NULL;
     lv_obj_delete_async(old);

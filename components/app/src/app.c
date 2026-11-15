@@ -7,6 +7,12 @@
 #include "app/app.h"
 #include "platform/platform_factory.h"
 #include "platform/board_config.h"
+#if BOARD_M5STACK_STOPWATCH
+#include "platform/stopwatch_hardware.h"
+#include <driver/i2c_master.h>
+// Global I2C bus handle for touch controller (initialized in app_run)
+i2c_master_bus_handle_t g_stopwatch_i2c_bus = NULL;
+#endif
 #include "services/ui_model.h"
 #include "services/battery.h"
 #include "services/factory_test.h"
@@ -1855,8 +1861,19 @@ static void idle_check_cb(void *arg) {
             note_activity();
             return;
         }
-        esp_err_t err = esp_deep_sleep_enable_gpio_wakeup(
+        
+        // 配置GPIO唤醒:根据芯片特性选择合适的API
+        esp_err_t err;
+#if SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
+        // ESP32-C3 等支持直接GPIO深睡唤醒的芯片
+        err = esp_deep_sleep_enable_gpio_wakeup(
             1ULL << s_button_wakeup_gpio, ESP_GPIO_WAKEUP_GPIO_LOW);
+#elif SOC_PM_SUPPORT_EXT0_WAKEUP
+        // ESP32-S3 等使用EXT0唤醒的芯片 (单GPIO,低电平唤醒)
+        err = esp_sleep_enable_ext0_wakeup((gpio_num_t)s_button_wakeup_gpio, 0);
+#else
+#error "No deep sleep GPIO wakeup method available for this chip"
+#endif
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "配置 GPIO%d 深睡唤醒失败:%s",
                      s_button_wakeup_gpio, esp_err_to_name(err));
@@ -2665,6 +2682,31 @@ void app_run(void) {
     static const board_config_t board = BOARD_CONFIG_DEFAULT();
     const bool woke_from_deep_sleep =
         esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO;
+
+#if BOARD_M5STACK_STOPWATCH
+    // Initialize StopWatch hardware early: M5IOE1 and M5PM1 must be ready
+    // before display, audio, and battery initialization
+    // I2C bus is also used by touch controller later
+    static i2c_master_bus_handle_t s_stopwatch_i2c_bus = NULL;
+    i2c_master_bus_config_t i2c_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = (gpio_num_t)board.i2c_sda,
+        .scl_io_num = (gpio_num_t)board.i2c_scl,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = 1,
+    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &s_stopwatch_i2c_bus));
+    
+    if (stopwatch_hardware_init(s_stopwatch_i2c_bus) != 0) {
+        ESP_LOGE(TAG, "Failed to initialize StopWatch hardware");
+        abort();
+    }
+    
+    // Expose I2C bus for touch controller initialization
+    extern i2c_master_bus_handle_t g_stopwatch_i2c_bus;
+    g_stopwatch_i2c_bus = s_stopwatch_i2c_bus;
+#endif
 
     // ui_model 始终存在,作为各业务的共享状态。
     static ui_model_t model; ui_model_init(&model);

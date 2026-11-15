@@ -43,7 +43,8 @@ static void close_game(void) {
     atomic_store(&active, false);
     lv_timer_delete(G.timer); G.timer = NULL;
     lv_screen_load(G.previous);
-    lv_obj_delete(G.screen); G.screen = NULL;
+    lv_obj_t *gone = ui_theme_screen_obj(G.screen);
+    lv_obj_delete(gone ? gone : G.screen); G.screen = NULL;
     if (G.exit) G.exit(G.user);
 }
 static void draw_overlay(void) {
@@ -138,7 +139,7 @@ void ui_game_open(ui_game_exit_cb_t exit, void *user) {
     G.drawn_player_frame = UINT_MAX; G.drawn_player_lane = -1;
     G.drawn_running = true;
     for (unsigned i = 0; i < DODGE_OBSTACLES; ++i) G.drawn_art[i] = UINT8_MAX;
-    render(); lv_screen_load(G.screen);
+    render(); lv_screen_load(ui_theme_screen_obj(G.screen));
     lv_obj_set_style_clip_corner(G.screen, false, 0); lv_obj_set_style_radius(G.screen, 0, 0);
     atomic_store(&active, true);
     G.timer = lv_timer_create(tick, DODGE_STEP_MS, NULL);

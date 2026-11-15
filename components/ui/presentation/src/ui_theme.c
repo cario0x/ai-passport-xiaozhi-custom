@@ -1,15 +1,36 @@
 #include "presentation/ui_theme.h"
+#include "presentation/ui_round_layout.h"
 
 lv_obj_t *ui_theme_screen(void) {
+    // Content root for passport 240×320 layouts.
+    // On round StopWatch panels, LVGL screen objects ignore center-align and
+    // stay at (0,0) — physical repro showed the whole blue rect upper-left.
+    // Build a full-resolution letterbox screen and return the centered stage
+    // as the widget parent. Callers must lv_screen_load(ui_theme_screen_obj()).
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_remove_style_all(screen);
-    lv_obj_set_size(screen, 240, 320);
+    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+#if SCREEN_IS_ROUND
+    lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+    lv_obj_t *stage = ui_round_passport_stage(screen, lv_color_hex(UI_BG));
+    if (stage) {
+        lv_obj_set_style_text_color(stage, lv_color_hex(UI_INK), 0);
+        lv_obj_set_style_text_font(stage, &ui_font_body, 0);
+        return stage;
+    }
+#endif
+    ui_round_center_passport_screen(screen);
     lv_obj_set_style_bg_color(screen, lv_color_hex(UI_BG), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(screen, lv_color_hex(UI_INK), 0);
     lv_obj_set_style_text_font(screen, &ui_font_body, 0);
-    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     return screen;
+}
+
+lv_obj_t *ui_theme_screen_obj(lv_obj_t *content_root) {
+    return content_root ? lv_obj_get_screen(content_root) : NULL;
 }
 lv_obj_t *ui_theme_text(lv_obj_t *parent, const char *text, int x, int y,
                        int width, const lv_font_t *font, uint32_t color) {
