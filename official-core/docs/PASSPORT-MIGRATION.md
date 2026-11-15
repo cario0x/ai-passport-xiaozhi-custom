@@ -21,22 +21,23 @@ root (non-destructive). This tree lives under `official-core/`.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Native 466×466 round layout (insets, chat/status bars) | **Ported** | Keeps official `RoundLcdDisplay` insets; black background |
-| Glossy white Grok-style blob + opacity-only breathing | **Implemented (procedural)** | **No prior Grok Bot PNG/asset found** in Passport fork or upstream. Gap documented; LVGL circles + opacity anim used instead |
-| Touch feedback on blob (opacity flash → ToggleChat) | **Source-routed** | Requires CTP + LVGL indev; not hardware-verified |
-| CST820B touch init | **Implemented in source** | Upstream had docs only. Path: IOE G4 RST pulse → `esp_lcd_touch_new_i2c_cst816s` @0x15 → `lvgl_port_add_touch` → clickable blob. **Do not treat init logs as proof of working touch** |
-| Two physical buttons | **Official semantics kept** | B1=chat/WiFi-config, B2=volume |
-| FoloToy Passport `ui_xiaozhi` / companion faces / Bobo / clicker / plays | **Deferred** | Still only in repo-root Passport tree |
-| Passport NVS `cardid` / imgava / petart / companion partitions | **Not used** by official core | Incompatible layout — see below |
-| Official emoji image/GIF set as primary avatar | **Superseded visually** by blob (emoji pipeline still called, then hidden) |
+| Passport welcome character UI | **Ported** | Centered 240×320 stage; FoloToy brand; face-00 art; hi/CTA strings |
+| Round 466 letterbox | **Ported** | Black full panel; stage centered (fixes upper-left Passport-on-round bug) |
+| Hint copy for 2 buttons | **Adapted** | `请按右侧按钮开始` (not 3-key “最下方”) |
+| Face frames from Passport assets | **Ported** | Embedded `face-00-00..05` (girl); boy pack deferred |
+| Touch → CTA | **Source-routed** | CST820B → LVGL indev → peach “配置网络” pill → official `ToggleChatState` |
+| Two physical buttons | **Wired to official Application** | B1=WiFi-config/chat; B2=confirm when disconnected else volume |
+| Full Passport `ui_xiaozhi` pages (settings/chat bubbles/avatar picker) | **Deferred** | Welcome + emotion→face only — not a full Passport experience claim |
+| Bobo / plays / clicker / companion CPR1 partition | **Deferred** | Root Passport tree only |
+| FoloToy networking core | **Not ported** | Official voice/WiFi/cloud lifecycle retained |
+| Procedural white Grok blob (`6852f2e`) | **Superseded** | User chose Passport interface over blob |
 
-## Asset gap (explicit)
+## Asset notes
 
-Searched Passport fork + upstream for: `grok`, glossy white blob, opacity-breathing
-orb assets. **Zero matches.** Closest Passport items are companion face PNGs and
-procedural `ui_pet` circles — neither is the durable Grok Bot preference.
-This build therefore uses a **procedural** white blob. Shipping a true asset-based
-Grok Bot requires the user to supply art (or point to a prior path we could not find).
+Passport girl face PNGs reused from `assets/xiaozhi/faces/face-00-*.png`.
+Chinese welcome strings embedded as label bitmaps (WenKai-equivalent system font
+render at build time) so official core does not depend on Passport `ui_font_*` /
+`companion` partition. Full glyph fonts and boy faces remain deferred.
 
 ## Flash / partition safety (compile-only this turn — do NOT flash yet)
 
