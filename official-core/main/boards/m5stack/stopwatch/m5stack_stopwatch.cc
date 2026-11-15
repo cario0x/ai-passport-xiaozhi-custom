@@ -29,8 +29,12 @@
 static constexpr uint32_t kXzBg = 0x0B1118;
 static constexpr uint32_t kXzAccent = 0xF3B584;
 static constexpr uint32_t kXzInk = 0xF7EBDD;
-static constexpr int kStageW = 240;
-static constexpr int kStageH = 320;
+// Native 466 circular canvas — no 240×320 letterbox. Content stays inside the
+// round safe inset; background fills every pixel of the panel.
+static constexpr int kPanel = 466;
+static constexpr int kSafeInset = 56;   // matches DISPLAY_ROUND_EDGE_INSET
+static constexpr int kFaceNative = 144; // authentic asset size (no stretch)
+static constexpr int kFaceShow = 200;   // uniform scale for circular presence
 
 static const co5300_lcd_init_cmd_t vendor_specific_init[] = {
     {0xFE, (uint8_t[]){0x00}, 0, 0},
@@ -46,10 +50,11 @@ static const co5300_lcd_init_cmd_t vendor_specific_init[] = {
     {0x29, (uint8_t[]){0x00}, 0, 20},
 };
 
-// Authentic Passport welcome character UI on a centered 240×320 stage inside
-// the 466×466 round panel. Uses embedded face-00 frames + Passport palette /
-// layout from ui_xiaozhi.c. Does NOT restore Passport networking — CTA/buttons
-// call official Application / WiFi config.
+// Authentic Passport welcome character UI as an edge-to-edge 466×466 circular
+// composition. Passport BG fills the whole panel (no letterbox / black ring).
+// Face keeps native proportions (uniform scale only). Text/CTA sit inside the
+// circular safe inset. Does NOT restore Passport networking — CTA/buttons call
+// official Application / WiFi config.
 class PassportWelcomeLcdDisplay : public SpiLcdDisplay {
 public:
     static void rounder_event_cb(lv_event_t* e) {
@@ -72,12 +77,16 @@ public:
         DisplayLockGuard lock(this);
 
         auto screen = lv_screen_active();
-        lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
+        // Full-bleed Passport background — fills every visible circular pixel.
+        lv_obj_set_style_bg_color(screen, lv_color_hex(kXzBg), 0);
+        lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
         if (container_ != nullptr) {
-            lv_obj_set_style_bg_color(container_, lv_color_black(), 0);
+            lv_obj_set_size(container_, kPanel, kPanel);
+            lv_obj_set_style_bg_color(container_, lv_color_hex(kXzBg), 0);
+            lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
             lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
         }
-        // Hide stock emoji / chat chrome; Passport stage owns the first viewport.
+        // Hide stock emoji / chat chrome; Passport fullscreen owns the viewport.
         if (emoji_box_ != nullptr) {
             lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
         }
@@ -97,19 +106,18 @@ public:
             lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
         }
         if (top_bar_ != nullptr) {
-            // Keep battery/WiFi readable above the stage.
             lv_obj_set_style_bg_opa(top_bar_, LV_OPA_TRANSP, 0);
-            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, DISPLAY_ROUND_EDGE_INSET / 2);
-            lv_obj_set_style_pad_left(top_bar_, DISPLAY_ROUND_EDGE_INSET, 0);
-            lv_obj_set_style_pad_right(top_bar_, DISPLAY_ROUND_EDGE_INSET, 0);
+            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, kSafeInset / 2);
+            lv_obj_set_style_pad_left(top_bar_, kSafeInset, 0);
+            lv_obj_set_style_pad_right(top_bar_, kSafeInset, 0);
             lv_obj_move_foreground(top_bar_);
         }
 
-        BuildPassportStage(screen);
+        BuildPassportFullscreen(screen);
         lv_display_add_event_cb(display_, rounder_event_cb, LV_EVENT_INVALIDATE_AREA, NULL);
         ESP_LOGI(TAG,
-                 "PassportWelcomeLcdDisplay: centered 240x320 FoloToy stage on 466 round "
-                 "(face-00 assets; welcome page ported)");
+                 "PassportWelcomeLcdDisplay: edge-to-edge 466 circular FoloToy UI "
+                 "(no 240x320 letterbox; face-00 assets)");
     }
 
     bool SetEmotion(const char* emotion) override {
@@ -149,13 +157,14 @@ public:
     }
 
     void SetChatMessage(const char* role, const char* content) override {
-        // Defer full Passport chat bubble UI; surface subtitle on hint row when present.
+        // Defer full Passport chat bubble UI; subtitle stays inside circular safe chord.
         LcdDisplay::SetChatMessage(role, content);
         if (bottom_bar_ != nullptr) {
             lv_obj_clear_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, -DISPLAY_CHAT_BAR_BOTTOM_OFF);
+            lv_obj_set_style_bg_color(bottom_bar_, lv_color_hex(kXzBg), 0);
+            lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, -kSafeInset);
             if (chat_message_label_ != nullptr) {
-                lv_obj_set_width(chat_message_label_, LV_HOR_RES * 0.75);
+                lv_obj_set_width(chat_message_label_, kPanel - 2 * kSafeInset);
             }
         }
     }
@@ -219,50 +228,51 @@ private:
         lv_image_set_src(face_img_, passport_face(frame));
     }
 
-    void BuildPassportStage(lv_obj_t* screen) {
-        // Letterbox: full black screen already set; centered 240×320 Passport stage.
+    void BuildPassportFullscreen(lv_obj_t* screen) {
+        // Full-panel root: Passport BG edge-to-edge (circular bezel crops corners).
         stage_ = lv_obj_create(screen);
         lv_obj_remove_style_all(stage_);
-        lv_obj_set_size(stage_, kStageW, kStageH);
-        lv_obj_center(stage_);
+        lv_obj_set_size(stage_, kPanel, kPanel);
+        lv_obj_set_pos(stage_, 0, 0);
         lv_obj_set_style_bg_color(stage_, lv_color_hex(kXzBg), 0);
         lv_obj_set_style_bg_opa(stage_, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(stage_, 0, 0);
         lv_obj_remove_flag(stage_, LV_OBJ_FLAG_SCROLLABLE);
 
-        // Brand "FoloToy" (ASCII — montserrat available)
+        // Header row inside top safe chord.
         lv_obj_t* brand = lv_label_create(stage_);
         lv_label_set_text(brand, "FoloToy");
         lv_obj_set_style_text_font(brand, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(brand, lv_color_hex(kXzAccent), 0);
-        lv_obj_set_pos(brand, 16, 16);
+        lv_obj_align(brand, LV_ALIGN_TOP_MID, -40, kSafeInset);
 
-        // "小智" title image
         lv_obj_t* title = lv_image_create(stage_);
         lv_image_set_src(title, passport_label_brand_xz());
-        lv_obj_set_pos(title, 93, 12);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 36, kSafeInset - 2);
 
-        // Portrait 144×144 at (48, 49) — Passport welcome coords
+        // Character: authentic 144 asset, uniform scale only (no stretch/crop).
         face_img_ = lv_image_create(stage_);
         lv_image_set_src(face_img_, passport_face(PASSPORT_FACE_IDLE));
-        lv_obj_set_pos(face_img_, 48, 49);
+        lv_image_set_scale(face_img_, (256 * kFaceShow) / kFaceNative);
+        lv_obj_align(face_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 36);
 
-        // Greeting line
+        // Greeting + hint: centered in the mid/lower safe band (not clipped by arc).
         lv_obj_t* hi = lv_image_create(stage_);
         lv_image_set_src(hi, passport_label_hi());
-        lv_obj_align(hi, LV_ALIGN_TOP_MID, 0, 205);
+        lv_obj_align(hi, LV_ALIGN_TOP_MID, 0, kSafeInset + 36 + kFaceShow + 16);
 
-        // 2-button adapted hint (was "请按右侧最下方的按钮")
         lv_obj_t* hint = lv_image_create(stage_);
         lv_image_set_src(hint, passport_label_hint());
-        lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 237);
+        lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, kSafeInset + 36 + kFaceShow + 48);
 
-        // Peach CTA pill "配置网络" — Passport control() at y=274
+        // CTA: wider chord-friendly pill; hitbox matches visible control.
+        const int cta_w = kPanel - 2 * (kSafeInset + 24);  // ~306px
+        const int cta_h = 40;
         cta_ = lv_obj_create(stage_);
         lv_obj_remove_style_all(cta_);
-        lv_obj_set_pos(cta_, 12, 274);
-        lv_obj_set_size(cta_, 216, 32);
-        lv_obj_set_style_radius(cta_, 12, 0);
+        lv_obj_set_size(cta_, cta_w, cta_h);
+        lv_obj_align(cta_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 8));
+        lv_obj_set_style_radius(cta_, 14, 0);
         lv_obj_set_style_bg_color(cta_, lv_color_hex(kXzAccent), 0);
         lv_obj_set_style_bg_opa(cta_, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(cta_, 0, 0);

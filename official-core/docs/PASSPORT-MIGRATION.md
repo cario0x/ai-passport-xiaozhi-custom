@@ -21,8 +21,8 @@ root (non-destructive). This tree lives under `official-core/`.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Passport welcome character UI | **Ported** | Centered 240×320 stage; FoloToy brand; face-00 art; hi/CTA strings |
-| Round 466 letterbox | **Ported** | Black full panel; stage centered (fixes upper-left Passport-on-round bug) |
+| Passport welcome character UI | **Ported** | Edge-to-edge 466 circular; FoloToy brand; face-00 art; hi/CTA strings |
+| Round fullscreen (no letterbox) | **Ported** | Passport BG fills panel; content in safe inset (user: 鋪滿整個屏幕) |
 | Hint copy for 2 buttons | **Adapted** | `请按右侧按钮开始` (not 3-key “最下方”) |
 | Face frames from Passport assets | **Ported** | Embedded `face-00-00..05` (girl); boy pack deferred |
 | Touch → CTA | **Source-routed** | CST820B → LVGL indev → peach “配置网络” pill → official `ToggleChatState` |
