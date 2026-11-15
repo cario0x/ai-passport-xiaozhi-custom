@@ -204,7 +204,7 @@ static void open_deferred(void *unused) {
     lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
     L.buttons[0] = button("上一页", 0); L.buttons[1] = button("下一页", 1); L.buttons[2] = button("返回", 2);
     show_page(); lv_group_focus_obj(L.buttons[L.pages > 1 ? 1 : 2]);
-    move_inputs(L.previous_group, L.group); lv_screen_load(L.screen);
+    move_inputs(L.previous_group, L.group); lv_screen_load(ui_theme_screen_obj(L.screen));
 }
 void ui_licenses_close(void) {
     if (L.closing) return;
@@ -226,12 +226,14 @@ static void close_deferred(void *unused) {
     lv_obj_t *previous = L.previous && lv_obj_is_valid(L.previous) ? L.previous : NULL;
     if (previous) lv_obj_remove_event_cb(previous, owner_deleted);
     move_inputs(group, previous_group); lv_group_set_default(previous_group);
+    lv_obj_t *to_delete = ui_theme_screen_obj(screen);
+    if (!to_delete) to_delete = screen;
     if (previous) lv_screen_load(previous);
-    else if (lv_screen_active() == screen) lv_screen_load(lv_obj_create(NULL));
+    else if (lv_screen_active() == to_delete) lv_screen_load(lv_obj_create(NULL));
     if (L.focus && lv_obj_is_valid(L.focus) && lv_obj_get_group(L.focus) == previous_group)
         lv_group_focus_obj(L.focus);
     L.screen = NULL;
-    lv_obj_delete(screen); lv_group_delete(group);
+    lv_obj_delete(to_delete); lv_group_delete(group);
     memset(&L, 0, sizeof(L));
 }
 bool ui_licenses_is_active(void) { return L.opening || L.screen != NULL; }

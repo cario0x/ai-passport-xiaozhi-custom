@@ -19,7 +19,11 @@ LV_FONT_DECLARE(ui_font_answer);
 LV_FONT_DECLARE(ui_font_caption);
 LV_FONT_DECLARE(ui_font_book);
 
+// Returns the passport content root (240×320). On round displays this may be a
+// centered stage whose parent is the full letterbox screen — use
+// ui_theme_screen_obj() before lv_screen_load / lv_obj_delete of the screen.
 lv_obj_t *ui_theme_screen(void);
+lv_obj_t *ui_theme_screen_obj(lv_obj_t *content_root);
 lv_obj_t *ui_theme_text(lv_obj_t *parent, const char *text, int x, int y,
                        int width, const lv_font_t *font, uint32_t color);
 lv_obj_t *ui_theme_panel(lv_obj_t *parent, int x, int y, int w, int h, bool focused);

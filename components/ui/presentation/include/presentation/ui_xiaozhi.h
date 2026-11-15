@@ -15,3 +15,7 @@ void ui_xiaozhi_set_device_settings(unsigned brightness, unsigned sleep_minutes)
 void ui_xiaozhi_set_battery(int percent, int level);
 bool ui_xiaozhi_welcome_drawn(void);
 void ui_xiaozhi_close(void);
+// Optional: app registers this so LVGL control taps synthesize confirm without
+// presentation depending on the app component.
+typedef void (*ui_xiaozhi_touch_fn)(void *user);
+void ui_xiaozhi_set_touch_confirm(ui_xiaozhi_touch_fn fn, void *user);

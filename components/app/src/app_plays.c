@@ -42,6 +42,12 @@ static unsigned connect_open_generation;
 static bool clicker_enabled, clicker_sleep_paused;
 static bool xz_confirm_armed;
 static bool xz_restart, xz_setup, xz_leaving, xz_exit_fault_shown;
+static void xz_touch_confirm(void *user) {
+    (void)user;
+    // Same confirm index the 3-key Passport UI uses; works with StopWatch remap.
+    app_plays_button(2, HAL_BTN_PRESS);
+    app_plays_button(2, HAL_BTN_RELEASE);
+}
 // Only the plays worker writes this bit. The old Wi-Fi profile stays intact
 // if a card in manual setup sleeps before the user submits a new network.
 RTC_DATA_ATTR static bool resume_setup_after_sleep;
@@ -187,6 +193,8 @@ static bool launch(int play) {
         xiaozhi_snapshot(&initial); initial.phase = XZ_BOOT; initial.detail[0] = 0;
         initial.output_active = false;
         ui_xiaozhi_open(&initial, companion_avatar(initial.avatar));
+        // Touch controls call back here (no presentation→app CMake edge).
+        ui_xiaozhi_set_touch_confirm(xz_touch_confirm, NULL);
         if (C.voice_opened) C.voice_opened(C.user);
     } else if (play == UI_PLAY_DODGE) {
         ui_game_set_best(best_score);
@@ -277,6 +285,30 @@ static void button(const play_event_t *event) {
     if (mode == UI_PLAY_XIAOZHI) {
         if (xz_leaving) return;
         ui_play_key_t key;
+#if BOARD_M5STACK_STOPWATCH
+        // Official v2.6.0 StopWatch: Button1=GPIO2 chat/wifi, Button2=GPIO1 volume.
+        // Passport Xiaozhi UI expects 3-key UP/DOWN/OK (OK is index 2). Map the
+        // two physical keys so OK works: Button2 (index 1) = confirm; Button1
+        // (index 0) = UP. Synthetic touch still uses index 2.
+        // Welcome copy "请按右侧最下方的按钮" → physical bottom-right = Button2.
+        if (index == 1) {
+            if (kind == HAL_BTN_PRESS) { xz_confirm_armed = true; return; }
+            if (xz_confirm_armed && (kind == HAL_BTN_LONG || kind == HAL_BTN_RELEASE)) {
+                key = kind == HAL_BTN_LONG ? UI_PLAY_BACK : UI_PLAY_OK;
+                xz_confirm_armed = false;
+            } else return;
+        } else if (index == 0 && kind == HAL_BTN_PRESS) {
+            key = UI_PLAY_UP;
+        } else if (index == 0 && kind == HAL_BTN_LONG) {
+            key = UI_PLAY_BACK;
+        } else if (index == 2 && kind == HAL_BTN_PRESS) {
+            xz_confirm_armed = true;
+            return;
+        } else if (index == 2 && xz_confirm_armed && (kind == HAL_BTN_LONG || kind == HAL_BTN_RELEASE)) {
+            key = kind == HAL_BTN_LONG ? UI_PLAY_BACK : UI_PLAY_OK;
+            xz_confirm_armed = false;
+        } else return;
+#else
         if (index < 2 && kind == HAL_BTN_PRESS) {
             key = index == 0 ? UI_PLAY_UP : UI_PLAY_DOWN;
         } else if (index == 2 && kind == HAL_BTN_PRESS) {
@@ -286,6 +318,7 @@ static void button(const play_event_t *event) {
             key = kind == HAL_BTN_LONG ? UI_PLAY_BACK : UI_PLAY_OK;
             xz_confirm_armed = false;
         } else return;
+#endif
         if (!platform_lvgl_lock(300)) return;
         unsigned avatar = 0;
         ui_device_preferences();
