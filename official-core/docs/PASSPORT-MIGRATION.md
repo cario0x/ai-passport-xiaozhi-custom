@@ -84,6 +84,28 @@ smeared over the avatar forehead.
 `!connected`; online face/chord → ToggleChat; CTP **poll-mode** (`int=NC`) + `INPUT_RAW_TOUCH`
 coord logs. B1/B2 paths unchanged when connected.
 
+## Hardware evidence — t70u/t71 photo 16:49 (after `0e7b711` app flash)
+
+App-only flash of `0e7b711` (`81000bf4…`, 3247680 B) written+verified on MAC
+`c4:9e:7e:12:9a:7c`; assets/bootloader/table/otadata skipped. USB reappeared; **bounded
+serial was interrupted — no runtime logs / ELF fingerprint**. Do not claim stable boot or
+exact runtime version from logs. User photo + feedback are the physical evidence.
+
+| Observation | Source diagnosis |
+|-------------|------------------|
+| Buttons OK; **no speaker**; voice input problematic | Codec open ≠ physical audio |
+| Fork `66557af4` had physical startup chime | Hardware not assumed dead |
+| Official StopWatch passed `use_mclk=false` with MCLK on G18 | Fork uses `use_mclk=true` — clock mismatch → silent DAC/ADC hypothesis |
+| Official `AUDIO_CODEC_GPIO_PA=NC`; PA always HIGH at boot | Fork starts PA **LOW**, enables via `stopwatch_speaker_enable` on open — IOE G10 (`M5IOE1_PIN_10`=9) verified |
+| Official Es8311 left `no_dac_ref` default false | Fork sets `no_dac_ref=true`; else mono read can be DAC ref → mic silence |
+| t71: white/checkered top wedge | Stock `top_bar_` theme bg @ 50% opa on round panel |
+| t71: clock `16:49` over FoloToy/小智 | Idle `SetStatus(HH:MM)` in semi-transparent status over brand |
+| t71: `配置网络` gone | Connected-state provision hide — do not regress |
+
+**Follow-up fix:** `use_mclk=true`; IOE PA toggle on `EnableOutput`; `no_dac_ref=!input_reference_`
+in Es8311AudioCodec; opaque dark top_bar/status; brand below clock pill; `AUDIO_PA_*` logs
+(no PCM/speech). Remaining: no serial from this flash; speaker/mic still need HW re-proof.
+
 ## Asset notes
 
 Passport girl face PNGs reused from `assets/xiaozhi/faces/face-00-*.png`.

@@ -20,8 +20,9 @@ uniform scale to ~200 only — no stretch).
 | Emotion → face | Official `SetEmotion` → Passport face frames |
 | Touch | CST820B poll-mode indev; CTA provision only when `!connected`; online face/chord → chat |
 | Buttons | B1/B2 while disconnected → provision/hint; B2 when connected → volume + toast |
-| Feedback | Status pill in top safe chord, non-clickable; no smeared “聆听中...” on face |
-| Stale UI | Hide `配置网络` / right-button hint once STA connected (t67u photo) |
+| Feedback | Opaque dark status/clock pill above brand; solid top_bar (no theme wedge) |
+| Stale UI | Hide `配置网络` / right-button hint once STA connected (keep this) |
+| Audio | `use_mclk=true`; IOE G10 PA toggled on EnableOutput; `no_dac_ref` for mono mic |
 
 ## Deferred
 

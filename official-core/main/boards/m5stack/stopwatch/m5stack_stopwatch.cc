@@ -112,44 +112,59 @@ public:
             lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_CLICKABLE);
         }
 
-        // Status bar: visible for SetStatus/ShowNotification, but NEVER clickable.
-        // a9ad19d put it over the face (kSafeInset+18) → "聆听中..." smeared on avatar
-        // (t67u photo) and default CLICKABLE stole upper-screen taps.
+        // Status bar: clock/status text. t71 photo: HH:MM overlapped FoloToy/小智
+        // because status sat semi-transparent over the brand row. Use an opaque
+        // dark pill ABOVE the brand, never clickable.
         if (status_bar_ != nullptr) {
             lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_CLICKABLE);
             lv_obj_set_style_bg_color(status_bar_, lv_color_hex(kXzBg), 0);
-            lv_obj_set_style_bg_opa(status_bar_, LV_OPA_70, 0);
+            lv_obj_set_style_bg_opa(status_bar_, LV_OPA_COVER, 0);
             lv_obj_set_style_radius(status_bar_, 10, 0);
             lv_obj_set_style_pad_left(status_bar_, 8, 0);
             lv_obj_set_style_pad_right(status_bar_, 8, 0);
             lv_obj_set_style_pad_top(status_bar_, 2, 0);
             lv_obj_set_style_pad_bottom(status_bar_, 2, 0);
-            // Sit in the top safe chord, ABOVE the face (face starts ~kSafeInset+36).
-            lv_obj_set_width(status_bar_, kPanel - 2 * kSafeInset - 40);
+            lv_obj_set_width(status_bar_, kPanel - 2 * kSafeInset - 80);
             lv_obj_set_height(status_bar_, LV_SIZE_CONTENT);
-            lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, kSafeInset - 4);
+            // Top chord under icon strip; brand row starts lower (~kSafeInset+36).
+            lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 28);
             if (status_label_ != nullptr) {
-                lv_obj_set_width(status_label_, kPanel - 2 * kSafeInset - 56);
+                lv_obj_set_width(status_label_, kPanel - 2 * kSafeInset - 96);
                 lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
                 lv_obj_set_style_text_color(status_label_, lv_color_hex(kXzInk), 0);
                 lv_obj_remove_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
                 lv_label_set_long_mode(status_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
             }
             if (notification_label_ != nullptr) {
-                lv_obj_set_width(notification_label_, kPanel - 2 * kSafeInset - 56);
+                lv_obj_set_width(notification_label_, kPanel - 2 * kSafeInset - 96);
                 lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
                 lv_obj_set_style_text_color(notification_label_, lv_color_hex(kXzInk), 0);
                 lv_obj_remove_flag(notification_label_, LV_OBJ_FLAG_CLICKABLE);
                 lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
             }
         }
+        // Stock top_bar_ ships with theme bg @ 50% opa — on a round panel that
+        // reads as a bright/checkered wedge at the top (t71). Paint solid Passport BG.
         if (top_bar_ != nullptr) {
-            lv_obj_set_style_bg_opa(top_bar_, LV_OPA_TRANSP, 0);
-            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, 8);
+            lv_obj_set_style_bg_color(top_bar_, lv_color_hex(kXzBg), 0);
+            lv_obj_set_style_bg_opa(top_bar_, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(top_bar_, 0, 0);
+            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, 4);
             lv_obj_set_style_pad_left(top_bar_, kSafeInset, 0);
             lv_obj_set_style_pad_right(top_bar_, kSafeInset, 0);
+            lv_obj_set_style_pad_top(top_bar_, 0, 0);
+            lv_obj_set_style_pad_bottom(top_bar_, 0, 0);
             lv_obj_remove_flag(top_bar_, LV_OBJ_FLAG_CLICKABLE);
+            if (network_label_ != nullptr) {
+                lv_obj_set_style_text_color(network_label_, lv_color_hex(kXzInk), 0);
+            }
+            if (battery_label_ != nullptr) {
+                lv_obj_set_style_text_color(battery_label_, lv_color_hex(kXzInk), 0);
+            }
+            if (mute_label_ != nullptr) {
+                lv_obj_set_style_text_color(mute_label_, lv_color_hex(kXzInk), 0);
+            }
         }
 
         BuildPassportFullscreen(screen);
@@ -378,35 +393,35 @@ private:
         // with no handler and no INPUT_* log (t67u: "无法触摸屏幕").
         lv_obj_remove_flag(stage_, LV_OBJ_FLAG_CLICKABLE);
 
-        // Header row inside top safe chord (below status pill).
+        // Header below icon strip + status/clock pill (t71: clock overlapped brand).
         lv_obj_t* brand = lv_label_create(stage_);
         lv_label_set_text(brand, "FoloToy");
         lv_obj_set_style_text_font(brand, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(brand, lv_color_hex(kXzAccent), 0);
-        lv_obj_align(brand, LV_ALIGN_TOP_MID, -40, kSafeInset + 18);
+        lv_obj_align(brand, LV_ALIGN_TOP_MID, -40, kSafeInset + 8);
         lv_obj_remove_flag(brand, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t* title = lv_image_create(stage_);
         lv_image_set_src(title, passport_label_brand_xz());
-        lv_obj_align(title, LV_ALIGN_TOP_MID, 36, kSafeInset + 16);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 36, kSafeInset + 6);
         lv_obj_remove_flag(title, LV_OBJ_FLAG_CLICKABLE);
 
         // Character: authentic 144 asset, uniform scale only (no stretch/crop).
         face_img_ = lv_image_create(stage_);
         lv_image_set_src(face_img_, passport_face(PASSPORT_FACE_IDLE));
         lv_image_set_scale(face_img_, (256 * kFaceShow) / kFaceNative);
-        lv_obj_align(face_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 48);
+        lv_obj_align(face_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 40);
         lv_obj_add_event_cb(face_img_, OnOnlineTouch, LV_EVENT_CLICKED, this);
 
         // Greeting + hint: centered in the mid/lower safe band (not clipped by arc).
         lv_obj_t* hi = lv_image_create(stage_);
         lv_image_set_src(hi, passport_label_hi());
-        lv_obj_align(hi, LV_ALIGN_TOP_MID, 0, kSafeInset + 48 + kFaceShow + 12);
+        lv_obj_align(hi, LV_ALIGN_TOP_MID, 0, kSafeInset + 40 + kFaceShow + 12);
         lv_obj_remove_flag(hi, LV_OBJ_FLAG_CLICKABLE);
 
         hint_img_ = lv_image_create(stage_);
         lv_image_set_src(hint_img_, passport_label_hint());
-        lv_obj_align(hint_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 48 + kFaceShow + 44);
+        lv_obj_align(hint_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 40 + kFaceShow + 44);
         lv_obj_remove_flag(hint_img_, LV_OBJ_FLAG_CLICKABLE);
 
         // CTA: wider chord-friendly pill; hitbox matches visible control.
@@ -438,6 +453,44 @@ private:
         lv_obj_remove_flag(online_hit_, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(online_hit_, OnOnlineTouch, LV_EVENT_CLICKED, this);
     }
+};
+
+// IOE-gated PA: Es8311AudioCodec only toggles a native GPIO pa_pin, but StopWatch
+// PA is on M5IOE1 G10 (AUDIO_CODEC_GPIO_PA=NC). Mirror working fork
+// stopwatch_speaker_enable() on EnableOutput.
+class StopwatchEs8311AudioCodec : public Es8311AudioCodec {
+public:
+    StopwatchEs8311AudioCodec(void* i2c_master_handle, i2c_port_t i2c_port, int input_sample_rate,
+                              int output_sample_rate, gpio_num_t mclk, gpio_num_t bclk, gpio_num_t ws,
+                              gpio_num_t dout, gpio_num_t din, gpio_num_t pa_pin, uint8_t es8311_addr,
+                              bool use_mclk, M5IOE1* ioe)
+        : Es8311AudioCodec(i2c_master_handle, i2c_port, input_sample_rate, output_sample_rate, mclk,
+                           bclk, ws, dout, din, pa_pin, es8311_addr, use_mclk, false),
+          ioe_(ioe) {
+        ESP_LOGI(TAG,
+                 "AUDIO_CODEC pins MCLK=%d BCLK=%d WS=%d DOUT=%d DIN=%d use_mclk=%d "
+                 "pa_gpio=NC ioe_pa=%d",
+                 (int)mclk, (int)bclk, (int)ws, (int)dout, (int)din, use_mclk ? 1 : 0,
+                 (int)IOE_PIN_PA_EN);
+    }
+
+    void EnableOutput(bool enable) override {
+        Es8311AudioCodec::EnableOutput(enable);
+        if (ioe_ != nullptr) {
+            const int level = enable ? 1 : 0;
+            ioe_->digitalWrite(IOE_PIN_PA_EN, level ? HIGH : LOW);
+            ESP_LOGI(TAG, "AUDIO_PA_EN=%d vol=%d (no PCM dump)", level, output_volume());
+        }
+    }
+
+    void EnableInput(bool enable) override {
+        Es8311AudioCodec::EnableInput(enable);
+        ESP_LOGI(TAG, "AUDIO_IN_EN=%d gain=%.1f (no PCM dump)", enable ? 1 : 0,
+                 (double)input_gain());
+    }
+
+private:
+    M5IOE1* ioe_ = nullptr;
 };
 
 class StopwatchBacklight : public Backlight {
@@ -516,9 +569,13 @@ private:
         ioe_.setDriveMode(IOE_PIN_CODEC_POWER, M5IOE1_DRIVE_PUSHPULL);
         ioe_.digitalWrite(IOE_PIN_CODEC_POWER, HIGH);
 
+        // PA on M5IOE1_PIN_10 (= enum value 9, hardware G10) — verified against
+        // fork stopwatch_hardware.cpp + README "PA -- M5IOE1_G10". Working fork
+        // starts PA LOW and enables only for playback (half-duplex).
         ioe_.pinMode(IOE_PIN_PA_EN, OUTPUT);
         ioe_.setDriveMode(IOE_PIN_PA_EN, M5IOE1_DRIVE_PUSHPULL);
-        ioe_.digitalWrite(IOE_PIN_PA_EN, HIGH);
+        ioe_.digitalWrite(IOE_PIN_PA_EN, LOW);
+        ESP_LOGI(TAG, "AUDIO_PA init LOW via IOE pin enum=%d (G10)", (int)IOE_PIN_PA_EN);
 
         ioe_.pinMode(IOE_PIN_MOTOR, OUTPUT);
         ioe_.setDriveMode(IOE_PIN_MOTOR, M5IOE1_DRIVE_PUSHPULL);
@@ -722,10 +779,13 @@ public:
     }
 
     AudioCodec* GetAudioCodec() override {
-        static Es8311AudioCodec audio_codec(
+        // use_mclk=true: MCLK is wired on G18; prior `false` mismatched the working
+        // fork (audio_es8311.c use_mclk=true) and can yield silent DAC/ADC despite
+        // codec open OK. PA toggled via IOE in StopwatchEs8311AudioCodec.
+        static StopwatchEs8311AudioCodec audio_codec(
             i2c_bus_, I2C_NUM_0, AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
             AUDIO_I2S_GPIO_MCLK, AUDIO_I2S_GPIO_BCLK, AUDIO_I2S_GPIO_WS, AUDIO_I2S_GPIO_DOUT,
-            AUDIO_I2S_GPIO_DIN, AUDIO_CODEC_GPIO_PA, AUDIO_CODEC_ES8311_ADDR, false);
+            AUDIO_I2S_GPIO_DIN, AUDIO_CODEC_GPIO_PA, AUDIO_CODEC_ES8311_ADDR, true, &ioe_);
         return &audio_codec;
     }
 

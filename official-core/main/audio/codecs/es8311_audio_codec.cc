@@ -52,6 +52,10 @@ Es8311AudioCodec::Es8311AudioCodec(void* i2c_master_handle, i2c_port_t i2c_port,
     es8311_cfg.hw_gain.pa_voltage = 5.0;
     es8311_cfg.hw_gain.codec_dac_voltage = 3.3;
     es8311_cfg.pa_reverted = pa_inverted_;
+    // Mono mic without software AEC reference: if no_dac_ref stays false the
+    // driver selects ADCL+DACR and the single read channel is DAC ref → silence.
+    // Matches working Passport StopWatch fork (audio_es8311.c) and ES8311 docs.
+    es8311_cfg.no_dac_ref = !input_reference_;
     codec_if_ = es8311_codec_new(&es8311_cfg);
 
     if (codec_if_ == nullptr) {
