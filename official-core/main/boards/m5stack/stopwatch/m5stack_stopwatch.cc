@@ -1,6 +1,7 @@
 #include "wifi_board.h"
 #include "backlight.h"
 #include "display/lcd_display.h"
+#include "display/lvgl_display/lvgl_theme.h"
 #include "esp_lcd_co5300.h"
 #include "codecs/es8311_audio_codec.h"
 #include "application.h"
@@ -20,6 +21,7 @@
 #include <driver/spi_master.h>
 #include <wifi_manager.h>
 
+#include <cctype>
 #include <cstring>
 #include <string>
 
@@ -112,85 +114,63 @@ public:
             lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_CLICKABLE);
         }
 
-        // Status bar: clock/status text. t71 photo: HH:MM overlapped FoloToy/小智
-        // because status sat semi-transparent over the brand row. Use an opaque
-        // dark pill ABOVE the brand, never clickable.
+        // t72u: top still looked blank after opaque status/top strips. Hide stock
+        // status_bar_ entirely (listen/speak/clock go on Passport stage). Keep only
+        // tiny transparent wifi/battery icons — no reserved bar / wedge / strip.
         if (status_bar_ != nullptr) {
-            lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_set_style_bg_color(status_bar_, lv_color_hex(kXzBg), 0);
-            lv_obj_set_style_bg_opa(status_bar_, LV_OPA_COVER, 0);
-            lv_obj_set_style_radius(status_bar_, 10, 0);
-            lv_obj_set_style_pad_left(status_bar_, 8, 0);
-            lv_obj_set_style_pad_right(status_bar_, 8, 0);
-            lv_obj_set_style_pad_top(status_bar_, 2, 0);
-            lv_obj_set_style_pad_bottom(status_bar_, 2, 0);
-            lv_obj_set_width(status_bar_, kPanel - 2 * kSafeInset - 80);
-            lv_obj_set_height(status_bar_, LV_SIZE_CONTENT);
-            // Top chord under icon strip; brand row starts lower (~kSafeInset+36).
-            lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 28);
-            if (status_label_ != nullptr) {
-                lv_obj_set_width(status_label_, kPanel - 2 * kSafeInset - 96);
-                lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
-                lv_obj_set_style_text_color(status_label_, lv_color_hex(kXzInk), 0);
-                lv_obj_remove_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
-                lv_label_set_long_mode(status_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-            }
-            if (notification_label_ != nullptr) {
-                lv_obj_set_width(notification_label_, kPanel - 2 * kSafeInset - 96);
-                lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
-                lv_obj_set_style_text_color(notification_label_, lv_color_hex(kXzInk), 0);
-                lv_obj_remove_flag(notification_label_, LV_OBJ_FLAG_CLICKABLE);
-                lv_label_set_long_mode(notification_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-            }
+            lv_obj_set_style_bg_opa(status_bar_, LV_OPA_TRANSP, 0);
         }
-        // Stock top_bar_ ships with theme bg @ 50% opa — on a round panel that
-        // reads as a bright/checkered wedge at the top (t71). Paint solid Passport BG.
         if (top_bar_ != nullptr) {
-            lv_obj_set_style_bg_color(top_bar_, lv_color_hex(kXzBg), 0);
-            lv_obj_set_style_bg_opa(top_bar_, LV_OPA_COVER, 0);
-            lv_obj_set_style_radius(top_bar_, 0, 0);
-            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, 4);
-            lv_obj_set_style_pad_left(top_bar_, kSafeInset, 0);
-            lv_obj_set_style_pad_right(top_bar_, kSafeInset, 0);
-            lv_obj_set_style_pad_top(top_bar_, 0, 0);
-            lv_obj_set_style_pad_bottom(top_bar_, 0, 0);
+            lv_obj_set_style_bg_opa(top_bar_, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_pad_all(top_bar_, 0, 0);
+            lv_obj_set_style_pad_left(top_bar_, kSafeInset + 8, 0);
+            lv_obj_set_style_pad_right(top_bar_, kSafeInset + 8, 0);
+            lv_obj_set_height(top_bar_, LV_SIZE_CONTENT);
+            lv_obj_align(top_bar_, LV_ALIGN_TOP_MID, 0, 10);
             lv_obj_remove_flag(top_bar_, LV_OBJ_FLAG_CLICKABLE);
             if (network_label_ != nullptr) {
-                lv_obj_set_style_text_color(network_label_, lv_color_hex(kXzInk), 0);
+                lv_obj_set_style_text_color(network_label_, lv_color_hex(0xFFFFFF), 0);
             }
             if (battery_label_ != nullptr) {
-                lv_obj_set_style_text_color(battery_label_, lv_color_hex(kXzInk), 0);
+                lv_obj_set_style_text_color(battery_label_, lv_color_hex(0xFFFFFF), 0);
             }
             if (mute_label_ != nullptr) {
-                lv_obj_set_style_text_color(mute_label_, lv_color_hex(kXzInk), 0);
+                lv_obj_set_style_text_color(mute_label_, lv_color_hex(0xFFFFFF), 0);
             }
         }
 
         BuildPassportFullscreen(screen);
-        // Draw status above stage_ for readability, but it must stay non-clickable
-        // so pointer events fall through to CTA / face hit targets.
         if (top_bar_ != nullptr) {
             lv_obj_move_foreground(top_bar_);
-        }
-        if (status_bar_ != nullptr) {
-            lv_obj_move_foreground(status_bar_);
         }
         SyncProvisionUiLocked();
         lv_display_add_event_cb(display_, rounder_event_cb, LV_EVENT_INVALIDATE_AREA, NULL);
         ESP_LOGI(TAG,
-                 "PassportWelcomeLcdDisplay: fullscreen UI (status non-clickable, "
-                 "provision CTA gated on !connected)");
+                 "PassportWelcomeLcdDisplay: no top strip; listen/speak text bottom white");
     }
 
     void SetStatus(const char* status) override {
+        // Base updates hidden stock status_label_ (bookkeeping / clock idle path).
         LvglDisplay::SetStatus(status);
-        SyncProvisionUi();
+        DisplayLockGuard lock(this);
+        ApplyStatusToPassport(status);
+        SyncProvisionUiLocked();
+    }
+
+    void ShowNotification(const char* notification, int duration_ms = 3000) override {
+        // Base first (owns notification_timer_ + lock); then mirror to bottom band.
+        LvglDisplay::ShowNotification(notification, duration_ms);
+        DisplayLockGuard lock(this);
+        if (bottom_speech_ != nullptr && notification != nullptr && notification[0] != '\0') {
+            lv_label_set_text(bottom_speech_, notification);
+            lv_obj_clear_flag(bottom_speech_, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     void UpdateStatusBar(bool update_all = false) override {
         LvglDisplay::UpdateStatusBar(update_all);
-        // Periodic: hide 配置网络 once STA is up (t67u stale-UI photo).
         SyncProvisionUi();
     }
 
@@ -232,17 +212,23 @@ public:
     }
 
     void SetChatMessage(const char* role, const char* content) override {
-        // Do NOT unhide stock bottom_bar_ (covers CTA chord / sits behind stage_).
-        // Surface system/wake hints via notification toast instead.
+        // t72u: recognized user speech + assistant reply live in lower circular
+        // band (white wrap). Never unhide stock bottom_bar_ (opaque strip).
         (void)role;
+        DisplayLockGuard lock(this);
         if (bottom_bar_ != nullptr) {
-            DisplayLockGuard lock(this);
             lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
         }
-        if (content != nullptr && content[0] != '\0') {
-            ShowNotification(content, 8000);
+        if (bottom_speech_ != nullptr) {
+            if (content != nullptr && content[0] != '\0') {
+                lv_label_set_text(bottom_speech_, content);
+                lv_obj_clear_flag(bottom_speech_, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_label_set_text(bottom_speech_, "");
+                lv_obj_add_flag(bottom_speech_, LV_OBJ_FLAG_HIDDEN);
+            }
         }
-        SyncProvisionUi();
+        SyncProvisionUiLocked();
     }
 
     // HW evidence (68690f0): CTA click → ToggleChatState while wifi_configuring
@@ -297,8 +283,39 @@ private:
     lv_obj_t* hint_img_ = nullptr;
     lv_obj_t* cta_ = nullptr;
     lv_obj_t* online_hit_ = nullptr;
+    lv_obj_t* clock_label_ = nullptr;
+    lv_obj_t* bottom_status_ = nullptr;
+    lv_obj_t* bottom_speech_ = nullptr;
     int face_frame_ = PASSPORT_FACE_IDLE;
     bool provision_visible_ = true;
+
+    static bool LooksLikeClock(const char* status) {
+        return status != nullptr && std::strlen(status) == 5 && status[2] == ':' &&
+               std::isdigit(static_cast<unsigned char>(status[0])) &&
+               std::isdigit(static_cast<unsigned char>(status[1])) &&
+               std::isdigit(static_cast<unsigned char>(status[3])) &&
+               std::isdigit(static_cast<unsigned char>(status[4]));
+    }
+
+    // Route official SetStatus strings: HH:MM → top clock; listen/speak/etc →
+    // bottom white status. Must be called under DisplayLockGuard.
+    void ApplyStatusToPassport(const char* status) {
+        if (status == nullptr) {
+            return;
+        }
+        if (LooksLikeClock(status)) {
+            if (clock_label_ != nullptr) {
+                lv_label_set_text(clock_label_, status);
+                lv_obj_clear_flag(clock_label_, LV_OBJ_FLAG_HIDDEN);
+            }
+            return;
+        }
+        if (bottom_status_ != nullptr) {
+            lv_label_set_text(bottom_status_, status);
+            // Visible whenever we have a non-clock status (聆听中 / 说话中 / …).
+            lv_obj_clear_flag(bottom_status_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 
     void SyncProvisionUiLocked() {
         const bool connected = WifiManager::GetInstance().IsConnected();
@@ -340,6 +357,22 @@ private:
                 lv_obj_remove_flag(face_img_, LV_OBJ_FLAG_CLICKABLE);
             } else {
                 lv_obj_add_flag(face_img_, LV_OBJ_FLAG_CLICKABLE);
+            }
+        }
+        // Keep dialogue labels above CTA when provisioning would collide; when
+        // online they occupy the freed lower chord.
+        if (bottom_status_ != nullptr) {
+            if (show_provision) {
+                lv_obj_align(bottom_status_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 64));
+            } else {
+                lv_obj_align(bottom_status_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 52));
+            }
+        }
+        if (bottom_speech_ != nullptr) {
+            if (show_provision) {
+                lv_obj_align(bottom_speech_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 88));
+            } else {
+                lv_obj_align(bottom_speech_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 10));
             }
         }
     }
@@ -393,36 +426,79 @@ private:
         // with no handler and no INPUT_* log (t67u: "无法触摸屏幕").
         lv_obj_remove_flag(stage_, LV_OBJ_FLAG_CLICKABLE);
 
-        // Header below icon strip + status/clock pill (t71: clock overlapped brand).
+        auto* lvgl_theme = static_cast<LvglTheme*>(current_theme_);
+        const lv_font_t* text_font =
+            (lvgl_theme != nullptr && lvgl_theme->text_font() != nullptr)
+                ? lvgl_theme->text_font()->font()
+                : &lv_font_montserrat_14;
+
+        // t72u: pull brand into the visible top chord — no reserved status strip /
+        // opaque pill / empty margin above (stock status_bar_ is hidden).
+        constexpr int kBrandY = 22;
+        constexpr int kFaceY = 52;
+        const int text_w = kPanel - 2 * (kSafeInset + 12);  // ~330, circular-safe
+
         lv_obj_t* brand = lv_label_create(stage_);
         lv_label_set_text(brand, "FoloToy");
         lv_obj_set_style_text_font(brand, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(brand, lv_color_hex(kXzAccent), 0);
-        lv_obj_align(brand, LV_ALIGN_TOP_MID, -40, kSafeInset + 8);
+        lv_obj_align(brand, LV_ALIGN_TOP_MID, -48, kBrandY);
         lv_obj_remove_flag(brand, LV_OBJ_FLAG_CLICKABLE);
 
         lv_obj_t* title = lv_image_create(stage_);
         lv_image_set_src(title, passport_label_brand_xz());
-        lv_obj_align(title, LV_ALIGN_TOP_MID, 36, kSafeInset + 6);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 40, kBrandY - 2);
         lv_obj_remove_flag(title, LV_OBJ_FLAG_CLICKABLE);
+
+        // Clock: top-right white, clear of brand (UpdateStatusBar → SetStatus HH:MM).
+        clock_label_ = lv_label_create(stage_);
+        lv_label_set_text(clock_label_, "");
+        lv_obj_set_style_text_font(clock_label_, text_font, 0);
+        lv_obj_set_style_text_color(clock_label_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_align(clock_label_, LV_ALIGN_TOP_RIGHT, -(kSafeInset + 4), 12);
+        lv_obj_remove_flag(clock_label_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(clock_label_, LV_OBJ_FLAG_HIDDEN);
 
         // Character: authentic 144 asset, uniform scale only (no stretch/crop).
         face_img_ = lv_image_create(stage_);
         lv_image_set_src(face_img_, passport_face(PASSPORT_FACE_IDLE));
         lv_image_set_scale(face_img_, (256 * kFaceShow) / kFaceNative);
-        lv_obj_align(face_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 40);
+        lv_obj_align(face_img_, LV_ALIGN_TOP_MID, 0, kFaceY);
         lv_obj_add_event_cb(face_img_, OnOnlineTouch, LV_EVENT_CLICKED, this);
 
-        // Greeting + hint: centered in the mid/lower safe band (not clipped by arc).
+        // Greeting + hint under face (provision path).
         lv_obj_t* hi = lv_image_create(stage_);
         lv_image_set_src(hi, passport_label_hi());
-        lv_obj_align(hi, LV_ALIGN_TOP_MID, 0, kSafeInset + 40 + kFaceShow + 12);
+        lv_obj_align(hi, LV_ALIGN_TOP_MID, 0, kFaceY + kFaceShow + 8);
         lv_obj_remove_flag(hi, LV_OBJ_FLAG_CLICKABLE);
 
         hint_img_ = lv_image_create(stage_);
         lv_image_set_src(hint_img_, passport_label_hint());
-        lv_obj_align(hint_img_, LV_ALIGN_TOP_MID, 0, kSafeInset + 40 + kFaceShow + 44);
+        lv_obj_align(hint_img_, LV_ALIGN_TOP_MID, 0, kFaceY + kFaceShow + 40);
         lv_obj_remove_flag(hint_img_, LV_OBJ_FLAG_CLICKABLE);
+
+        // Bottom dialogue band (t72u): white status + wrapping speech, no opaque strip.
+        bottom_status_ = lv_label_create(stage_);
+        lv_label_set_text(bottom_status_, "");
+        lv_obj_set_width(bottom_status_, text_w);
+        lv_obj_set_style_text_font(bottom_status_, text_font, 0);
+        lv_obj_set_style_text_color(bottom_status_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_align(bottom_status_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(bottom_status_, LV_LABEL_LONG_CLIP);
+        lv_obj_align(bottom_status_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 52));
+        lv_obj_remove_flag(bottom_status_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(bottom_status_, LV_OBJ_FLAG_HIDDEN);
+
+        bottom_speech_ = lv_label_create(stage_);
+        lv_label_set_text(bottom_speech_, "");
+        lv_obj_set_width(bottom_speech_, text_w);
+        lv_obj_set_style_text_font(bottom_speech_, text_font, 0);
+        lv_obj_set_style_text_color(bottom_speech_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_align(bottom_speech_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(bottom_speech_, LV_LABEL_LONG_WRAP);
+        lv_obj_align(bottom_speech_, LV_ALIGN_BOTTOM_MID, 0, -(kSafeInset + 10));
+        lv_obj_remove_flag(bottom_speech_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(bottom_speech_, LV_OBJ_FLAG_HIDDEN);
 
         // CTA: wider chord-friendly pill; hitbox matches visible control.
         const int cta_w = kPanel - 2 * (kSafeInset + 24);  // ~306px
@@ -444,6 +520,7 @@ private:
         lv_obj_remove_flag(cta_label, LV_OBJ_FLAG_CLICKABLE);
 
         // Invisible online chord (same geometry as CTA) — enabled only when connected.
+        // Keep transparent (no opaque strip); sits under dialogue labels in z-order.
         online_hit_ = lv_obj_create(stage_);
         lv_obj_remove_style_all(online_hit_);
         lv_obj_set_size(online_hit_, cta_w, cta_h + 24);
@@ -452,6 +529,14 @@ private:
         lv_obj_add_flag(online_hit_, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(online_hit_, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(online_hit_, OnOnlineTouch, LV_EVENT_CLICKED, this);
+
+        // Dialogue above the hit target so white text stays readable.
+        if (bottom_status_ != nullptr) {
+            lv_obj_move_foreground(bottom_status_);
+        }
+        if (bottom_speech_ != nullptr) {
+            lv_obj_move_foreground(bottom_speech_);
+        }
     }
 };
 
