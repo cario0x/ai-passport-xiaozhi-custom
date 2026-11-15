@@ -25,12 +25,43 @@ root (non-destructive). This tree lives under `official-core/`.
 | Round fullscreen (no letterbox) | **Ported** | Passport BG fills panel; content in safe inset (user: 鋪滿整個屏幕) |
 | Hint copy for 2 buttons | **Adapted** | `请按右侧按钮开始` (not 3-key “最下方”) |
 | Face frames from Passport assets | **Ported** | Embedded `face-00-00..05` (girl); boy pack deferred |
-| Touch → CTA | **Source-routed** | CST820B → LVGL indev → peach “配置网络” pill → official `ToggleChatState` |
-| Two physical buttons | **Wired to official Application** | B1=WiFi-config/chat; B2=confirm when disconnected else volume |
+| Touch → CTA | **Fixed semantics** | CST820B → LVGL indev → “配置网络” → `EnterWifiConfigMode` / AP hint (NOT `ToggleChatState`) |
+| Two physical buttons | **Fixed semantics** | B1=WiFi/chat (no audio-test while provisioning); B2=confirm when disconnected else volume + toast |
+| Status / notification bar | **Unhidden** | Was hidden under fullscreen → volume/WiFi hints invisible despite working events |
 | Full Passport `ui_xiaozhi` pages (settings/chat bubbles/avatar picker) | **Deferred** | Welcome + emotion→face only — not a full Passport experience claim |
 | Bobo / plays / clicker / companion CPR1 partition | **Deferred** | Root Passport tree only |
 | FoloToy networking core | **Not ported** | Official voice/WiFi/cloud lifecycle retained |
 | Procedural white Grok blob (`6852f2e`) | **Superseded** | User chose Passport interface over blob |
+
+## Hardware evidence — package `68690f0` (official-core fullscreen)
+
+Physical flash on correct MAC confirmed all five writes; boot project=`xiaozhi` v2.6.0;
+ELF `1e1559acd` matching package. User t63u feedback applies to **this** build, not the
+old Passport fork. Bounded log ~68s, no panic. Observation ended before 90s (worker
+interruption); no further device action after that window.
+
+| t(ms) | Event | Diagnosis |
+|------:|-------|-----------|
+| 1378 | CST820B RST IOE_G4, I2C 0x15, INT G13 → `lvgl_port_add_touch` | Touch driver path OK |
+| 1588 | CST816S IC id 183; indev pointer registered | Chip probe OK |
+| 1658 | Fullscreen display | UI path OK |
+| 7618 | Passport CTA touch **CLICKED** (LVGL indev) | **Touch not lost** |
+| 7618 | CTA while disconnected → `ToggleChatState` | **Wrong callback semantics** |
+| 7628 | `wifi_configuring` → `audio_testing` | Official `HandleToggleChatEvent` side-effect |
+| 10038–16098 | volume 80/90/100 | Events fired; **source not GPIO-labeled** — do not assume button |
+| 16928 / 18658 | audio_testing ↔ wifi_configuring | Same ToggleChat flip |
+| 20658–22578 | volume 0/10/20/30 | Same as above |
+| 28558 | Audio testing queue full, stop | Stuck in useless audio-test path |
+| boot | 3× GPIO0 conflict/overwritten warnings | Open partition/pin conflict; not this CTA bug |
+| boot | Missing `robot_2`, `gear` expression resources | Assets gap; Alert/emoji may soft-fail |
+| boot | Codec init/open OK | Not physical audio proof |
+| — | Provisioning AP/DHCP/webservice up; `wifi_configuring` | No confirmed station/cloud |
+| — | NVS not explicitly written by esptool; RF calib invalid then firmware saved itself | Do **not** claim NVS byte-unchanged |
+
+**Verdict:** input hardware and LVGL indev work. User “no useful action” = CTA/`ToggleChatState`
+→ audio-test + hidden `status_bar_` (ShowNotification invisible). Fix: CTA/B1/B2 while
+disconnected call `HandleProvisionOrChat` (EnterWifiConfigMode or AP SSID/URL toast);
+keep status bar visible; labeled `INPUT_*` logs.
 
 ## Asset notes
 

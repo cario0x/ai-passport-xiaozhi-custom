@@ -102,8 +102,24 @@ public:
         if (bottom_bar_ != nullptr) {
             lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
         }
+        // Keep status_bar_ VISIBLE: ShowNotification/SetStatus write here. Hiding it
+        // made volume/WiFi hints invisible (HW log proved events; user saw nothing).
         if (status_bar_ != nullptr) {
-            lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(status_bar_, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_pad_left(status_bar_, kSafeInset, 0);
+            lv_obj_set_style_pad_right(status_bar_, kSafeInset, 0);
+            lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, kSafeInset + 18);
+            lv_obj_set_width(status_bar_, kPanel - 2 * kSafeInset);
+            if (status_label_ != nullptr) {
+                lv_obj_set_width(status_label_, kPanel - 2 * kSafeInset);
+                lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
+            }
+            if (notification_label_ != nullptr) {
+                lv_obj_set_width(notification_label_, kPanel - 2 * kSafeInset);
+                lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
+            }
+            lv_obj_move_foreground(status_bar_);
         }
         if (top_bar_ != nullptr) {
             lv_obj_set_style_bg_opa(top_bar_, LV_OPA_TRANSP, 0);
@@ -114,10 +130,13 @@ public:
         }
 
         BuildPassportFullscreen(screen);
+        if (status_bar_ != nullptr) {
+            lv_obj_move_foreground(status_bar_);
+        }
         lv_display_add_event_cb(display_, rounder_event_cb, LV_EVENT_INVALIDATE_AREA, NULL);
         ESP_LOGI(TAG,
                  "PassportWelcomeLcdDisplay: edge-to-edge 466 circular FoloToy UI "
-                 "(no 240x320 letterbox; face-00 assets)");
+                 "(status bar kept for notifications)");
     }
 
     bool SetEmotion(const char* emotion) override {
@@ -169,15 +188,43 @@ public:
         }
     }
 
-    void TriggerSetupAction() {
+    // HW evidence (68690f0): CTA click → ToggleChatState while wifi_configuring
+    // toggled into audio_testing — user saw "no useful action". CTA must open /
+    // surface WiFi provisioning, never the audio-test toggle.
+    static void HandleProvisionOrChat(const char* source_tag) {
         auto& app = Application::GetInstance();
-        if (app.GetDeviceState() == kDeviceStateStarting &&
-            !WifiManager::GetInstance().IsConnected()) {
-            ESP_LOGI(TAG, "Passport CTA/Button → EnterWifiConfigMode");
-            // Board method accessed via button lambdas; for display CTA use app toggle.
+        auto& board = static_cast<WifiBoard&>(Board::GetInstance());
+        auto state = app.GetDeviceState();
+        auto& wifi = WifiManager::GetInstance();
+
+        ESP_LOGI(TAG, "INPUT_%s state=%d connected=%d config_mode=%d", source_tag, (int)state,
+                 wifi.IsConnected() ? 1 : 0, wifi.IsConfigMode() ? 1 : 0);
+
+        if (wifi.IsConnected()) {
+            ESP_LOGI(TAG, "INPUT_%s → ToggleChatState (connected)", source_tag);
+            app.ToggleChatState();
+            return;
         }
-        ESP_LOGI(TAG, "Passport confirm → ToggleChatState / setup path");
-        app.ToggleChatState();
+
+        // Leave audio-testing if stuck there (prior CTA/B1 mis-wiring).
+        if (state == kDeviceStateAudioTesting) {
+            ESP_LOGI(TAG, "INPUT_%s → exit audio_testing back to wifi_configuring", source_tag);
+            app.ToggleChatState();
+            state = app.GetDeviceState();
+        }
+
+        if (state == kDeviceStateWifiConfiguring || wifi.IsConfigMode()) {
+            std::string hint = Lang::Strings::CONNECT_TO_HOTSPOT;
+            hint += wifi.GetApSsid();
+            hint += Lang::Strings::ACCESS_VIA_BROWSER;
+            hint += wifi.GetApWebUrl();
+            board.GetDisplay()->ShowNotification(hint, 10000);
+            ESP_LOGI(TAG, "INPUT_%s → wifi_config HINT (AP already up; not ToggleChat)", source_tag);
+            return;
+        }
+
+        ESP_LOGI(TAG, "INPUT_%s → EnterWifiConfigMode", source_tag);
+        board.EnterWifiConfigMode();
     }
 
 private:
@@ -191,25 +238,9 @@ private:
         if (self == nullptr) {
             return;
         }
-        ESP_LOGI(TAG, "Passport CTA touch CLICKED (LVGL indev)");
-        auto& app = Application::GetInstance();
-        if (app.GetDeviceState() == kDeviceStateStarting &&
-            !WifiManager::GetInstance().IsConnected()) {
-            // WiFi config is entered from Button1 while starting; also allow CTA.
-            // WifiBoard::EnterWifiConfigMode is protected — use button path equivalent:
-            // Application exposes network via board. Fall back to ToggleChatState which
-            // on starting-unconnected is paired with Button1 EnterWifiConfigMode.
-        }
-        // Prefer opening WiFi config when disconnected; else toggle chat.
-        // Board instance owns EnterWifiConfigMode; invoke via Application state:
+        ESP_LOGI(TAG, "INPUT_CTA_CLICK (LVGL indev → 配置网络)");
         self->FlashCta();
-        if (!WifiManager::GetInstance().IsConnected()) {
-            // Display cannot call protected EnterWifiConfigMode; synthesize Button1 action
-            // by posting the same user-facing outcome the board wires on Button1.
-            ESP_LOGI(TAG, "CTA while disconnected — ToggleChatState (Button1 also opens WiFi "
-                          "config while starting)");
-        }
-        app.ToggleChatState();
+        HandleProvisionOrChat("CTA");
     }
 
     void FlashCta() {
@@ -481,38 +512,40 @@ private:
         }
         const lvgl_port_touch_cfg_t touch_cfg = {.disp = disp, .handle = touch_};
         lv_indev_t* indev = lvgl_port_add_touch(&touch_cfg);
-        ESP_LOGI(TAG, "touch indev=%p routed to Passport CTA (HW unverified)", (void*)indev);
+        ESP_LOGI(TAG, "touch indev=%p → LVGL pointer (HW: CST820B IC=183 verified)", (void*)indev);
     }
 
     void InitializeButtons() {
-        // Official semantics: B1 chat/WiFi-config, B2 volume.
-        // Welcome CTA "配置网络" / hint "请按右侧按钮开始" → right button is B2 on
-        // StopWatch hardware, but WiFi config is B1 while starting (official).
-        // Map B2 click during welcome-like disconnected start to also allow confirm
-        // via ToggleChat; B1 remains WiFi-config / chat toggle.
+        // config.h: BUTTON1=GPIO2 (chat/WiFi), BUTTON2=GPIO1 (volume) — matches
+        // original official stopwatch.cc. README pin names are swapped vs that.
+        // HW 68690f0: volume steps logged while status_bar was hidden → looked dead.
         button1_.OnClick([this]() {
+            ESP_LOGI(TAG, "INPUT_BTN1_CLICK gpio=%d", (int)BUTTON1_GPIO);
             auto& app = Application::GetInstance();
-            if (app.GetDeviceState() == kDeviceStateStarting &&
-                !WifiManager::GetInstance().IsConnected()) {
-                EnterWifiConfigMode();
+            auto state = app.GetDeviceState();
+            auto& wifi = WifiManager::GetInstance();
+
+            // Do NOT ToggleChat while provisioning — that enters audio_testing
+            // (evidence: wifi_configuring↔audio_testing with no useful UI).
+            if (!wifi.IsConnected() || state == kDeviceStateWifiConfiguring ||
+                state == kDeviceStateAudioTesting) {
+                PassportWelcomeLcdDisplay::HandleProvisionOrChat("BTN1");
                 return;
             }
+            ESP_LOGI(TAG, "INPUT_BTN1 → ToggleChatState");
             app.ToggleChatState();
         });
 
         button2_.OnClick([this]() {
-            // While disconnected at start, treat right button as confirm (Passport
-            // welcome "press right button") → same as WiFi/setup entry path.
+            ESP_LOGI(TAG, "INPUT_BTN2_CLICK gpio=%d", (int)BUTTON2_GPIO);
             auto& app = Application::GetInstance();
+            auto state = app.GetDeviceState();
+            // Right-button confirm while provisioning → same WiFi hint/setup path
+            // (Passport "请按右侧按钮开始"), not volume-only.
             if (!WifiManager::GetInstance().IsConnected() &&
-                (app.GetDeviceState() == kDeviceStateStarting ||
-                 app.GetDeviceState() == kDeviceStateIdle)) {
-                ESP_LOGI(TAG, "Button2 confirm while disconnected → WiFi config / chat");
-                if (app.GetDeviceState() == kDeviceStateStarting) {
-                    EnterWifiConfigMode();
-                    return;
-                }
-                app.ToggleChatState();
+                (state == kDeviceStateStarting || state == kDeviceStateIdle ||
+                 state == kDeviceStateWifiConfiguring || state == kDeviceStateAudioTesting)) {
+                PassportWelcomeLcdDisplay::HandleProvisionOrChat("BTN2");
                 return;
             }
             auto* codec = GetAudioCodec();
@@ -521,8 +554,9 @@ private:
                 volume = 0;
             }
             codec->SetOutputVolume(volume);
-            GetDisplay()->ShowNotification(std::string(Lang::Strings::VOLUME) + ":" +
-                                           std::to_string(volume) + "%");
+            std::string msg = std::string(Lang::Strings::VOLUME) + ":" + std::to_string(volume) + "%";
+            ESP_LOGI(TAG, "INPUT_BTN2_VOLUME %d", volume);
+            GetDisplay()->ShowNotification(msg, 3000);
         });
     }
 

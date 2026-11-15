@@ -18,8 +18,9 @@ uniform scale to ~200 only — no stretch).
 | Strings | `FoloToy` / `小智` / `hi，我是FoloToy的小智` / CTA `配置网络` |
 | Hint (2-btn) | `请按右侧按钮开始` |
 | Emotion → face | Official `SetEmotion` → Passport face frames |
-| Touch | CST820B → clickable CTA hitbox matching visible pill |
-| Buttons | B1 = WiFi-config/chat; B2 = confirm when disconnected else volume |
+| Touch | CST820B → CTA → `EnterWifiConfigMode` / AP hint (not `ToggleChatState`) |
+| Buttons | B1/B2 while disconnected → provision/hint; B2 when connected → volume + toast |
+| Feedback | `status_bar_` kept visible so `ShowNotification` is readable |
 
 ## Deferred
 

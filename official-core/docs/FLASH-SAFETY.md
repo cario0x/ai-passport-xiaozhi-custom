@@ -32,3 +32,6 @@
 - Automatic NVS migration scripts
 - Force Xiaozhi cloud rebind
 - Claim hardware success from compile-only artifacts
+- Claim NVS was byte-unchanged after a flash that omitted an explicit NVS write —
+  firmware may still rewrite regions (e.g. RF calibration invalid → self-save on
+  `68690f0`)
